@@ -12,6 +12,15 @@ describe("createAuthHeaders", () => {
 			key: "secret-key-uuid",
 		});
 	});
+
+	it("returns Bearer auth header when accessToken is provided", () => {
+		const headers = createAuthHeaders({
+			clientId: "test",
+			apiKey: "test",
+			accessToken: "my-token",
+		});
+		expect(headers).toEqual({ Authorization: "Bearer my-token" });
+	});
 });
 
 describe("redactCredentials", () => {
