@@ -1,5 +1,10 @@
 import type { FlowhubResponse } from "../../src/pagination.js";
-import type { InventoryItem } from "../../src/types/inventory.js";
+import type {
+	InventoryAnalyticsByRoomItem,
+	InventoryAnalyticsItem,
+	InventoryByRoomItem,
+	InventoryItem,
+} from "../../src/types/inventory.js";
 
 export const INVENTORY_FLOWER: InventoryItem = {
 	brand: null,
@@ -156,4 +161,38 @@ export const INVENTORY_EDIBLE: InventoryItem = {
 export const INVENTORY_LIST_RESPONSE: FlowhubResponse<InventoryItem> = {
 	status: 200,
 	data: [INVENTORY_FLOWER, INVENTORY_EDIBLE],
+};
+
+export const INVENTORY_BY_ROOM_FLOWER: InventoryByRoomItem = {
+	...INVENTORY_FLOWER,
+	roomId: "room-001",
+	roomName: "Main Floor",
+	upc: null,
+};
+
+export const INVENTORY_BY_ROOM_RESPONSE: FlowhubResponse<InventoryByRoomItem> = {
+	status: 200,
+	data: [INVENTORY_BY_ROOM_FLOWER],
+};
+
+export const INVENTORY_ANALYTICS_FLOWER: InventoryAnalyticsItem = {
+	...INVENTORY_FLOWER,
+	forSale: true,
+	supplierLicense: "LIC-2023-001",
+};
+
+export const INVENTORY_ANALYTICS_RESPONSE: FlowhubResponse<InventoryAnalyticsItem> = {
+	status: 200,
+	data: [INVENTORY_ANALYTICS_FLOWER],
+};
+
+export const INVENTORY_ANALYTICS_BY_ROOM_FLOWER: InventoryAnalyticsByRoomItem = {
+	...INVENTORY_BY_ROOM_FLOWER,
+	forSale: true,
+	supplierLicense: "LIC-2023-001",
+};
+
+export const INVENTORY_ANALYTICS_BY_ROOM_RESPONSE: FlowhubResponse<InventoryAnalyticsByRoomItem> = {
+	status: 200,
+	data: [INVENTORY_ANALYTICS_BY_ROOM_FLOWER],
 };

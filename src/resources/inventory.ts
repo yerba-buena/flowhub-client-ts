@@ -40,9 +40,9 @@ export class InventoryResource {
 		this.scopedLocationId = locationId;
 	}
 
-	private inventoryPath(suffix: string): string {
+	private inventoryPath(suffix: string, scopedSuffix?: string | undefined): string {
 		if (this.scopedLocationId) {
-			return `/v0/locations/${this.scopedLocationId}/${suffix}`;
+			return `/v0/locations/${this.scopedLocationId}/${scopedSuffix ?? suffix}`;
 		}
 		return `/v0/${suffix}`;
 	}
@@ -78,7 +78,7 @@ export class InventoryResource {
 		params?: ListInventoryAnalyticsParams,
 	): Promise<FlowhubResponse<InventoryAnalyticsItem>> {
 		return this.http.request<FlowhubResponse<InventoryAnalyticsItem>>({
-			path: this.inventoryPath("inventoryAnalytics"),
+			path: this.inventoryPath("inventoryAnalytics", "InventoryAnalytics"),
 			query: buildAnalyticsQuery(params),
 		});
 	}
@@ -87,7 +87,7 @@ export class InventoryResource {
 		params?: ListInventoryAnalyticsParams,
 	): Promise<FlowhubResponse<InventoryAnalyticsByRoomItem>> {
 		return this.http.request<FlowhubResponse<InventoryAnalyticsByRoomItem>>({
-			path: this.inventoryPath("inventoryAnalyticsByRooms"),
+			path: this.inventoryPath("inventoryAnalyticsByRooms", "InventoryAnalyticsByRooms"),
 			query: buildAnalyticsQuery(params),
 		});
 	}

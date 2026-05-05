@@ -1,5 +1,6 @@
 import type { FlowhubCredentials } from "./auth.js";
 import { HttpClient } from "./http.js";
+import { AuthTokenResource } from "./resources/auth-token.js";
 import { InventoryResource } from "./resources/inventory.js";
 import { LocationsResource } from "./resources/locations.js";
 import { OrderAheadResource } from "./resources/order-ahead.js";
@@ -17,6 +18,7 @@ export class FlowhubClient {
 	readonly locations: LocationsResource;
 	readonly inventory: InventoryResource;
 	readonly orderAhead: OrderAheadResource;
+	readonly authToken: AuthTokenResource;
 
 	/** The locationId this client is scoped to, if any. */
 	readonly locationId: string | undefined;
@@ -41,6 +43,7 @@ export class FlowhubClient {
 		this.locations = new LocationsResource(this.http);
 		this.inventory = new InventoryResource(this.http, locationId);
 		this.orderAhead = new OrderAheadResource(this.http);
+		this.authToken = new AuthTokenResource();
 	}
 
 	/**

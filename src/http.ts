@@ -43,6 +43,42 @@ export class HttpClient {
 		this.fetchFn = options.fetchFn ?? globalThis.fetch;
 	}
 
+	async requestText(options: RequestOptions): Promise<string> {
+		const url = this.buildUrl(options.path, options.query);
+		const headers: Record<string, string> = {
+			Accept: "text/plain",
+			...createAuthHeaders(this.credentials),
+		};
+
+		const controller = new AbortController();
+		const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+
+		try {
+			const response = await this.fetchFn(url, {
+				method: options.method ?? "GET",
+				headers,
+				signal: options.signal ?? controller.signal,
+			});
+
+			clearTimeout(timeoutId);
+
+			if (response.ok) {
+				return await response.text();
+			}
+
+			const errorBody = await response.text().catch(() => "");
+			const requestId = response.headers.get("x-request-id") ?? undefined;
+			throw this.mapError(response.status, errorBody, requestId);
+		} catch (err) {
+			clearTimeout(timeoutId);
+			if (err instanceof FlowhubError) throw err;
+			if (err instanceof DOMException && err.name === "AbortError") {
+				throw new FlowhubError("Request timed out", { cause: err });
+			}
+			throw new FlowhubError("Network error", { cause: err });
+		}
+	}
+
 	async request<T>(options: RequestOptions): Promise<T> {
 		const url = this.buildUrl(options.path, options.query);
 		const headers: Record<string, string> = {
@@ -74,6 +110,9 @@ export class HttpClient {
 				clearTimeout(timeoutId);
 
 				if (response.ok) {
+					if (response.status === 204) {
+						return undefined as T;
+					}
 					return (await response.json()) as T;
 				}
 

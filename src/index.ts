@@ -6,6 +6,7 @@ export {
 	FlowhubRateLimitError,
 	FlowhubValidationError,
 } from "./errors.js";
+export type { OAuthTokenRequest, OAuthTokenResponse } from "./types/auth.js";
 export type {
 	CannabinoidInfo,
 	InventoryAnalyticsByRoomItem,
@@ -23,6 +24,8 @@ export type {
 	OrderCustomer,
 	OrderFee,
 	OrderItem,
+	OrderResponse,
+	OrderStatus,
 	UpdateOrderParams,
 } from "./types/orders.js";
 export type { FlowhubResponse, PaginationParams } from "./pagination.js";

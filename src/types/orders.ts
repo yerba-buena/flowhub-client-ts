@@ -53,3 +53,21 @@ export interface CreateOrderParams {
 }
 
 export interface UpdateOrderParams extends CreateOrderParams {}
+
+export type OrderStatus =
+	| "new"
+	| "started"
+	| "ready"
+	| "inQueue"
+	| "inTransit"
+	| "delivered"
+	| "unableToComplete"
+	| "unableToVerify"
+	| "deleted"
+	| "sold";
+
+export interface OrderResponse {
+	readonly customerExternalId: string;
+	readonly orderId: string;
+	readonly status: OrderStatus;
+}
