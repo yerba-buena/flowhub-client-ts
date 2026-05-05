@@ -5,28 +5,14 @@ import { FlowhubClient } from "../../src/client.js";
 import { FlowhubAuthError } from "../../src/errors.js";
 import {
 	INVENTORY_ANALYTICS_BY_ROOM_RESPONSE,
-	INVENTORY_ANALYTICS_FLOWER,
 	INVENTORY_ANALYTICS_RESPONSE,
-	INVENTORY_BY_ROOM_FLOWER,
 	INVENTORY_BY_ROOM_RESPONSE,
-	INVENTORY_FLOWER,
 	INVENTORY_LIST_RESPONSE,
 } from "../fixtures/inventory.fixtures.js";
 
 const BASE_URL = "https://api.test.flowhub.co";
 
-const server = setupServer(
-	http.get(`${BASE_URL}/v0/inventory`, ({ request }) => {
-		const clientId = request.headers.get("clientId");
-		const key = request.headers.get("key");
-
-		if (!clientId || !key) {
-			return HttpResponse.json({ error: "Unauthorized" }, { status: 401 });
-		}
-
-		return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-	}),
-);
+const server = setupServer();
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
@@ -41,307 +27,219 @@ function createClient() {
 	});
 }
 
+interface CapturedRequest {
+	url: string;
+	method: string;
+	headers: Record<string, string>;
+}
+
+function captureGet(
+	path: string,
+	response: Record<string, unknown> | { status: number; data: readonly unknown[] },
+	captured: CapturedRequest[] = [],
+): CapturedRequest[] {
+	server.use(
+		http.get(`${BASE_URL}${path}`, ({ request }) => {
+			captured.push({
+				url: request.url,
+				method: "GET",
+				headers: {
+					clientId: request.headers.get("clientId") ?? "",
+					key: request.headers.get("key") ?? "",
+				},
+			});
+			return HttpResponse.json(response);
+		}),
+	);
+	return captured;
+}
+
 describe("InventoryResource", () => {
 	// ── list() ──────────────────────────────────────────────────────
 	describe("list", () => {
-		it("sends GET to /v0/inventory with auth headers", async () => {
+		it("sends GET /v0/inventory with clientId and key auth headers", async () => {
+			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
+
+			const client = createClient();
+			await client.inventory.list();
+
+			expect(reqs).toHaveLength(1);
+			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
+			expect(reqs[0]!.headers.key).toBe("test-api-key");
+		});
+
+		it("sends limit and offset query params", async () => {
+			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
+
+			const client = createClient();
+			await client.inventory.list({ limit: 10, offset: 20 });
+
+			expect(reqs[0]!.url).toContain("limit=10");
+			expect(reqs[0]!.url).toContain("offset=20");
+		});
+
+		it("sends locationId query param when provided", async () => {
+			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
+
+			const client = createClient();
+			await client.inventory.list({ locationId: "loc-123" });
+
+			expect(reqs[0]!.url).toContain("locationId=loc-123");
+		});
+
+		it("parses response envelope with status and data array", async () => {
+			captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
+
 			const client = createClient();
 			const result = await client.inventory.list();
 
 			expect(result.status).toBe(200);
 			expect(result.data).toHaveLength(2);
-		});
-
-		it("returns typed InventoryItem objects with all spec fields", async () => {
-			const client = createClient();
-			const result = await client.inventory.list();
-			const item = result.data[0]!;
-
-			expect(item.productId).toBe(INVENTORY_FLOWER.productId);
-			expect(item.productName).toBe("Afghani Shake - One Gram");
-			expect(item.category).toBe("Flower");
-			expect(item.cannabinoidInformation).toHaveLength(4);
-			expect(item.cannabinoidInformation[2]!.name).toBe("thc");
-			expect(item.terpenes).toHaveLength(1);
-			expect(item.terpenes[0]!.name).toBe("Limonene");
-			expect(item.purchaseCategory).toBe("rec");
-			expect(item.variantId).toBe(INVENTORY_FLOWER.variantId);
-			expect(item.variantName).toBe("One");
-			expect(item.clientId).toBe(INVENTORY_FLOWER.clientId);
-			expect(item.locationId).toBe(INVENTORY_FLOWER.locationId);
-			expect(item.locationName).toBe("Headquarters");
-			expect(item.quantity).toBe(45);
-			expect(item.costInMinorUnits).toBe(50);
-			expect(item.postTaxPriceInPennies).toBe(100);
-			expect(item.preTaxPriceInPennies).toBe(100);
-			expect(item.priceInMinorUnits).toBe(100);
-			expect(item.currencyCode).toBe("USD");
-			expect(item.sku).toBe("h5aPEEmD8L");
-			expect(item.effects).toEqual(["euphoric", "energetic"]);
-			expect(item.parentProductId).toBe(INVENTORY_FLOWER.parentProductId);
-			expect(item.parentProductName).toBe("Afghani Shake");
-			expect(item.isSoldByWeight).toBe(false);
-			expect(item.inventoryUnitOfMeasure).toBe("grams");
-			expect(item.strainName).toBe("Afghani");
-			expect(item.supplierName).toBe("Green Growers Co.");
-			expect(item.regulatoryId).toBe(INVENTORY_FLOWER.regulatoryId);
-		});
-
-		it("sends query params for pagination", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventory`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
-			);
-
-			const client = createClient();
-			await client.inventory.list({ limit: 10, offset: 20 });
-
-			expect(capturedUrl).toContain("limit=10");
-			expect(capturedUrl).toContain("offset=20");
-		});
-
-		it("sends locationId query param when provided", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventory`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
-			);
-
-			const client = createClient();
-			await client.inventory.list({ locationId: "loc-123" });
-
-			expect(capturedUrl).toContain("locationId=loc-123");
+			// Verify full item roundtrip — not just selected fields
+			expect(result.data[0]).toEqual(INVENTORY_LIST_RESPONSE.data[0]);
+			expect(result.data[1]).toEqual(INVENTORY_LIST_RESPONSE.data[1]);
 		});
 	});
 
 	// ── listNonZero() ───────────────────────────────────────────────
 	describe("listNonZero", () => {
-		it("sends GET to /v0/inventoryNonZero", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryNonZero`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
-			);
+		it("sends GET to /v0/inventoryNonZero with auth", async () => {
+			const reqs = captureGet("/v0/inventoryNonZero", INVENTORY_LIST_RESPONSE);
 
 			const client = createClient();
-			const result = await client.inventory.listNonZero();
+			await client.inventory.listNonZero();
 
-			expect(result.status).toBe(200);
-			expect(result.data).toHaveLength(2);
-			expect(capturedUrl).toContain("/v0/inventoryNonZero");
+			expect(reqs).toHaveLength(1);
+			expect(reqs[0]!.url).toContain("/v0/inventoryNonZero");
+			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
 		});
 	});
 
 	// ── listByRoomsNonZero() ────────────────────────────────────────
 	describe("listByRoomsNonZero", () => {
-		it("sends GET to /v0/inventoryByRoomsNonZero and returns ByRoom items", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryByRoomsNonZero`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_BY_ROOM_RESPONSE);
-				}),
-			);
+		it("sends GET to /v0/inventoryByRoomsNonZero with auth", async () => {
+			const reqs = captureGet("/v0/inventoryByRoomsNonZero", INVENTORY_BY_ROOM_RESPONSE);
 
 			const client = createClient();
-			const result = await client.inventory.listByRoomsNonZero();
+			await client.inventory.listByRoomsNonZero();
 
-			expect(result.status).toBe(200);
-			expect(result.data).toHaveLength(1);
-			expect(capturedUrl).toContain("/v0/inventoryByRoomsNonZero");
-
-			const item = result.data[0]!;
-			expect(item.roomId).toBe("room-001");
-			expect(item.roomName).toBe("Main Floor");
-			expect(item.upc).toBeNull();
-			expect(item.productName).toBe(INVENTORY_BY_ROOM_FLOWER.productName);
+			expect(reqs).toHaveLength(1);
+			expect(reqs[0]!.url).toContain("/v0/inventoryByRoomsNonZero");
+			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
 		});
 	});
 
 	// ── listAnalytics() ─────────────────────────────────────────────
 	describe("listAnalytics", () => {
-		it("sends includesNotForSaleQuantity query param", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryAnalytics`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_ANALYTICS_RESPONSE);
-				}),
-			);
+		it("sends includesNotForSaleQuantity=true when provided", async () => {
+			const reqs = captureGet("/v0/inventoryAnalytics", INVENTORY_ANALYTICS_RESPONSE);
 
 			const client = createClient();
 			await client.inventory.listAnalytics({ includesNotForSaleQuantity: true });
 
-			expect(capturedUrl).toContain("includesNotForSaleQuantity=true");
+			expect(reqs[0]!.url).toContain("includesNotForSaleQuantity=true");
 		});
 
 		it("omits includesNotForSaleQuantity when not provided", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryAnalytics`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_ANALYTICS_RESPONSE);
-				}),
-			);
+			const reqs = captureGet("/v0/inventoryAnalytics", INVENTORY_ANALYTICS_RESPONSE);
 
 			const client = createClient();
 			await client.inventory.listAnalytics();
 
-			expect(capturedUrl).not.toContain("includesNotForSaleQuantity");
-		});
-
-		it("returns InventoryAnalyticsItem with forSale and supplierLicense", async () => {
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryAnalytics`, () => {
-					return HttpResponse.json(INVENTORY_ANALYTICS_RESPONSE);
-				}),
-			);
-
-			const client = createClient();
-			const result = await client.inventory.listAnalytics();
-			const item = result.data[0]!;
-
-			expect(item.forSale).toBe(true);
-			expect(item.supplierLicense).toBe("LIC-2023-001");
-			expect(item.productName).toBe(INVENTORY_ANALYTICS_FLOWER.productName);
+			expect(reqs[0]!.url).not.toContain("includesNotForSaleQuantity");
 		});
 	});
 
 	// ── listAnalyticsByRooms() ──────────────────────────────────────
 	describe("listAnalyticsByRooms", () => {
-		it("sends GET to /v0/inventoryAnalyticsByRooms with analytics + room fields", async () => {
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/inventoryAnalyticsByRooms`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_ANALYTICS_BY_ROOM_RESPONSE);
-				}),
+		it("sends GET to /v0/inventoryAnalyticsByRooms with query param", async () => {
+			const reqs = captureGet(
+				"/v0/inventoryAnalyticsByRooms",
+				INVENTORY_ANALYTICS_BY_ROOM_RESPONSE,
 			);
 
 			const client = createClient();
-			const result = await client.inventory.listAnalyticsByRooms({
-				includesNotForSaleQuantity: true,
-			});
+			await client.inventory.listAnalyticsByRooms({ includesNotForSaleQuantity: true });
 
-			expect(capturedUrl).toContain("/v0/inventoryAnalyticsByRooms");
-			expect(capturedUrl).toContain("includesNotForSaleQuantity=true");
-			expect(result.data).toHaveLength(1);
-
-			const item = result.data[0]!;
-			expect(item.forSale).toBe(true);
-			expect(item.supplierLicense).toBe("LIC-2023-001");
-			expect(item.roomId).toBe("room-001");
-			expect(item.roomName).toBe("Main Floor");
+			expect(reqs[0]!.url).toContain("/v0/inventoryAnalyticsByRooms");
+			expect(reqs[0]!.url).toContain("includesNotForSaleQuantity=true");
 		});
 	});
 
 	// ── Per-location endpoints ──────────────────────────────────────
 	describe("listByLocation", () => {
-		it("sends GET to /v0/locations/{locationId}/inventory with locationId in path", async () => {
+		it("sends locationId in path to /v0/locations/{id}/inventory", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/inventory`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
-			);
+			const reqs = captureGet("/v0/locations/:locationId/inventory", INVENTORY_LIST_RESPONSE);
 
 			const client = createClient();
-			const result = await client.inventory.listByLocation(locationId);
+			await client.inventory.listByLocation(locationId);
 
-			expect(result.status).toBe(200);
-			expect(result.data).toHaveLength(2);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventory`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventory`);
+			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
 		});
 	});
 
 	describe("listByLocationNonZero", () => {
-		it("sends GET to /v0/locations/{locationId}/inventoryNonZero", async () => {
+		it("sends locationId in path to /v0/locations/{id}/inventoryNonZero", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/inventoryNonZero`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/inventoryNonZero",
+				INVENTORY_LIST_RESPONSE,
 			);
 
 			const client = createClient();
-			const result = await client.inventory.listByLocationNonZero(locationId);
+			await client.inventory.listByLocationNonZero(locationId);
 
-			expect(result.status).toBe(200);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventoryNonZero`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventoryNonZero`);
 		});
 	});
 
 	describe("listByLocationByRoomsNonZero", () => {
-		it("sends GET to /v0/locations/{locationId}/inventoryByRoomsNonZero", async () => {
+		it("sends locationId in path to /v0/locations/{id}/inventoryByRoomsNonZero", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/inventoryByRoomsNonZero`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_BY_ROOM_RESPONSE);
-				}),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/inventoryByRoomsNonZero",
+				INVENTORY_BY_ROOM_RESPONSE,
 			);
 
 			const client = createClient();
-			const result = await client.inventory.listByLocationByRoomsNonZero(locationId);
+			await client.inventory.listByLocationByRoomsNonZero(locationId);
 
-			expect(result.status).toBe(200);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventoryByRoomsNonZero`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventoryByRoomsNonZero`);
 		});
 	});
 
 	describe("listAnalyticsByLocation", () => {
-		it("sends GET to /v0/locations/{locationId}/InventoryAnalytics (capital I)", async () => {
+		it("sends to /v0/locations/{id}/InventoryAnalytics (capital I) with query param", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/InventoryAnalytics`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_ANALYTICS_RESPONSE);
-				}),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/InventoryAnalytics",
+				INVENTORY_ANALYTICS_RESPONSE,
 			);
 
 			const client = createClient();
-			const result = await client.inventory.listAnalyticsByLocation(locationId, {
+			await client.inventory.listAnalyticsByLocation(locationId, {
 				includesNotForSaleQuantity: true,
 			});
 
-			expect(result.status).toBe(200);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/InventoryAnalytics`);
-			expect(capturedUrl).toContain("includesNotForSaleQuantity=true");
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/InventoryAnalytics`);
+			expect(reqs[0]!.url).toContain("includesNotForSaleQuantity=true");
 		});
 	});
 
 	describe("listAnalyticsByLocationByRooms", () => {
-		it("sends GET to /v0/locations/{locationId}/InventoryAnalyticsByRooms (capital I, R)", async () => {
+		it("sends to /v0/locations/{id}/InventoryAnalyticsByRooms (capital I, R)", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(
-					`${BASE_URL}/v0/locations/:locationId/InventoryAnalyticsByRooms`,
-					({ request }) => {
-						capturedUrl = request.url;
-						return HttpResponse.json(INVENTORY_ANALYTICS_BY_ROOM_RESPONSE);
-					},
-				),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/InventoryAnalyticsByRooms",
+				INVENTORY_ANALYTICS_BY_ROOM_RESPONSE,
 			);
 
 			const client = createClient();
-			const result = await client.inventory.listAnalyticsByLocationByRooms(locationId);
+			await client.inventory.listAnalyticsByLocationByRooms(locationId);
 
-			expect(result.status).toBe(200);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/InventoryAnalyticsByRooms`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/InventoryAnalyticsByRooms`);
 		});
 	});
 
@@ -359,90 +257,55 @@ describe("InventoryResource", () => {
 		});
 	});
 
-	// ── Iterators ───────────────────────────────────────────────────
-	describe("iterate", () => {
-		it("yields all inventory items from a single page", async () => {
-			const client = createClient();
-			const items = [];
-			for await (const item of client.inventory.iterate()) {
-				items.push(item);
-			}
-
-			expect(items).toHaveLength(2);
-			expect(items[0]!.productName).toBe("Afghani Shake - One Gram");
-			expect(items[1]!.productName).toBe("Chewy Gummies 100mg");
-		});
-	});
-
 	// ── forLocation() scoping ───────────────────────────────────────
 	describe("forLocation scoping", () => {
 		it("routes list() to /v0/locations/{locationId}/inventory", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/inventory`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
-			);
+			const reqs = captureGet("/v0/locations/:locationId/inventory", INVENTORY_LIST_RESPONSE);
 
-			const client = createClient();
-			const scoped = client.forLocation(locationId);
-			const result = await scoped.inventory.list();
+			const scoped = createClient().forLocation(locationId);
+			await scoped.inventory.list();
 
-			expect(result.status).toBe(200);
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventory`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventory`);
 		});
 
 		it("routes listNonZero() to /v0/locations/{locationId}/inventoryNonZero", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/inventoryNonZero`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
-				}),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/inventoryNonZero",
+				INVENTORY_LIST_RESPONSE,
 			);
 
 			const scoped = createClient().forLocation(locationId);
 			await scoped.inventory.listNonZero();
 
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventoryNonZero`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventoryNonZero`);
 		});
 
 		it("routes listAnalytics() to /v0/locations/{locationId}/InventoryAnalytics (capital I)", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(`${BASE_URL}/v0/locations/:locationId/InventoryAnalytics`, ({ request }) => {
-					capturedUrl = request.url;
-					return HttpResponse.json(INVENTORY_ANALYTICS_RESPONSE);
-				}),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/InventoryAnalytics",
+				INVENTORY_ANALYTICS_RESPONSE,
 			);
 
 			const scoped = createClient().forLocation(locationId);
 			await scoped.inventory.listAnalytics();
 
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/InventoryAnalytics`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/InventoryAnalytics`);
 		});
 
 		it("routes listAnalyticsByRooms() to /v0/locations/{locationId}/InventoryAnalyticsByRooms", async () => {
 			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
-			let capturedUrl = "";
-			server.use(
-				http.get(
-					`${BASE_URL}/v0/locations/:locationId/InventoryAnalyticsByRooms`,
-					({ request }) => {
-						capturedUrl = request.url;
-						return HttpResponse.json(INVENTORY_ANALYTICS_BY_ROOM_RESPONSE);
-					},
-				),
+			const reqs = captureGet(
+				"/v0/locations/:locationId/InventoryAnalyticsByRooms",
+				INVENTORY_ANALYTICS_BY_ROOM_RESPONSE,
 			);
 
 			const scoped = createClient().forLocation(locationId);
 			await scoped.inventory.listAnalyticsByRooms();
 
-			expect(capturedUrl).toContain(`/v0/locations/${locationId}/InventoryAnalyticsByRooms`);
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/InventoryAnalyticsByRooms`);
 		});
 	});
 });

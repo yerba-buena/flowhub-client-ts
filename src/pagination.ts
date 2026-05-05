@@ -3,6 +3,16 @@ export interface FlowhubResponse<T> {
 	readonly data: readonly T[];
 }
 
+/**
+ * Pagination query parameters.
+ *
+ * NOTE: The Flowhub OpenAPI spec does not document pagination parameters on
+ * inventory or locations endpoints (all declare `parameters: []`). The spec
+ * defines orphaned `page`/`page_size` traits that no endpoint references.
+ * These `limit`/`offset` params are sent optimistically — the server may
+ * ignore them and return the full dataset. The `paginate()` helper handles
+ * this gracefully by stopping when a page returns fewer items than requested.
+ */
 export interface PaginationParams {
 	readonly limit?: number | undefined;
 	readonly offset?: number | undefined;
