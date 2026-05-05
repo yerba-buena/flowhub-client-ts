@@ -8,6 +8,7 @@ concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   release:
+    if: github.repository == 'yerba-buena/flowhub-client-ts'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -21,6 +22,7 @@ jobs:
           registry-url: "https://registry.npmjs.org"
       - run: npm ci
       - name: Create Release Pull Request or Publish
+        if: env.NPM_TOKEN != ''
         uses: changesets/action@v1
         with:
           publish: npm run release

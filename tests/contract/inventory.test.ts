@@ -104,6 +104,77 @@ describe("InventoryResource", () => {
 		});
 	});
 
+	describe("listNonZero", () => {
+		it("sends GET to /v0/inventoryNonZero", async () => {
+			let capturedUrl = "";
+			server.use(
+				http.get(`${BASE_URL}/v0/inventoryNonZero`, ({ request }) => {
+					capturedUrl = request.url;
+					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
+				}),
+			);
+
+			const client = createClient();
+			const result = await client.inventory.listNonZero();
+
+			expect(result.status).toBe(200);
+			expect(result.data).toHaveLength(2);
+			expect(capturedUrl).toContain("/v0/inventoryNonZero");
+		});
+	});
+
+	describe("listByLocation", () => {
+		it("sends GET to /v0/locations/{locationId}/inventory with locationId in path", async () => {
+			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
+			let capturedUrl = "";
+			server.use(
+				http.get(`${BASE_URL}/v0/locations/:locationId/inventory`, ({ request }) => {
+					capturedUrl = request.url;
+					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
+				}),
+			);
+
+			const client = createClient();
+			const result = await client.inventory.listByLocation(locationId);
+
+			expect(result.status).toBe(200);
+			expect(result.data).toHaveLength(2);
+			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventory`);
+		});
+	});
+
+	describe("listAnalytics", () => {
+		it("sends includesNotForSaleQuantity query param", async () => {
+			let capturedUrl = "";
+			server.use(
+				http.get(`${BASE_URL}/v0/inventoryAnalytics`, ({ request }) => {
+					capturedUrl = request.url;
+					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
+				}),
+			);
+
+			const client = createClient();
+			await client.inventory.listAnalytics({ includesNotForSaleQuantity: true });
+
+			expect(capturedUrl).toContain("includesNotForSaleQuantity=true");
+		});
+
+		it("omits includesNotForSaleQuantity when not provided", async () => {
+			let capturedUrl = "";
+			server.use(
+				http.get(`${BASE_URL}/v0/inventoryAnalytics`, ({ request }) => {
+					capturedUrl = request.url;
+					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
+				}),
+			);
+
+			const client = createClient();
+			await client.inventory.listAnalytics();
+
+			expect(capturedUrl).not.toContain("includesNotForSaleQuantity");
+		});
+	});
+
 	describe("iterate", () => {
 		it("yields all inventory items from a single page", async () => {
 			const client = createClient();
@@ -115,6 +186,26 @@ describe("InventoryResource", () => {
 			expect(items).toHaveLength(2);
 			expect(items[0]!.productName).toBe("Afghani Shake - One Gram");
 			expect(items[1]!.productName).toBe("Chewy Gummies 100mg");
+		});
+	});
+
+	describe("forLocation scoping", () => {
+		it("routes list() to /v0/locations/{locationId}/inventory", async () => {
+			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
+			let capturedUrl = "";
+			server.use(
+				http.get(`${BASE_URL}/v0/locations/:locationId/inventory`, ({ request }) => {
+					capturedUrl = request.url;
+					return HttpResponse.json(INVENTORY_LIST_RESPONSE);
+				}),
+			);
+
+			const client = createClient();
+			const scoped = client.forLocation(locationId);
+			const result = await scoped.inventory.list();
+
+			expect(result.status).toBe(200);
+			expect(capturedUrl).toContain(`/v0/locations/${locationId}/inventory`);
 		});
 	});
 });

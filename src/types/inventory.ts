@@ -19,23 +19,28 @@ export interface InventoryItem {
 	readonly cannabinoidInformation: readonly CannabinoidInfo[];
 	readonly category: string;
 	readonly clientId: string;
+	readonly costInMinorUnits: number;
+	readonly createdAt: string;
 	readonly currencyCode: string;
 	readonly customCategoryName: string | null;
 	readonly effects: readonly string[];
 	readonly expirationDate: string | null;
 	readonly inventoryUnitOfMeasure: string;
 	readonly inventoryUnitOfMeasureToGramsMultiplier: number | null;
+	readonly invoiceNumber: string | null;
 	readonly isMixAndMatch: boolean | null;
 	readonly isSoldByWeight: boolean;
 	readonly isStackable: boolean | null;
 	readonly locationId: string;
 	readonly locationName: string;
+	readonly manifestId: string | null;
 	readonly nutrients: unknown;
 	readonly parentProductId: string;
 	readonly parentProductName: string;
 	readonly postTaxPriceInPennies: number;
 	readonly preTaxPriceInPennies: number;
 	readonly priceInMinorUnits: number;
+	readonly priceProfileName: string | null;
 	readonly productDescription: string;
 	readonly productId: string;
 	readonly productName: string;
@@ -49,6 +54,8 @@ export interface InventoryItem {
 	readonly regulatoryId: string;
 	readonly sku: string;
 	readonly speciesName: string | null;
+	readonly strainName: string | null;
+	readonly supplierName: string | null;
 	readonly tags: readonly string[];
 	readonly terpenes: readonly TerpeneInfo[];
 	readonly type: string | null;
@@ -57,8 +64,28 @@ export interface InventoryItem {
 	readonly weightTierInformation: unknown;
 }
 
+export interface InventoryByRoomItem extends InventoryItem {
+	readonly roomId: string;
+	readonly roomName: string;
+	readonly upc: string | null;
+}
+
+export interface InventoryAnalyticsItem extends InventoryItem {
+	readonly forSale: boolean;
+	readonly supplierLicense: string | null;
+}
+
+export interface InventoryAnalyticsByRoomItem extends InventoryByRoomItem {
+	readonly forSale: boolean;
+	readonly supplierLicense: string | null;
+}
+
 export interface ListInventoryParams {
 	readonly limit?: number | undefined;
 	readonly offset?: number | undefined;
 	readonly locationId?: string | undefined;
+}
+
+export interface ListInventoryAnalyticsParams extends ListInventoryParams {
+	readonly includesNotForSaleQuantity?: boolean | undefined;
 }

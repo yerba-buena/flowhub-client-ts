@@ -18,11 +18,15 @@ export class FlowhubClient {
 	readonly inventory: InventoryResource;
 	readonly orderAhead: OrderAheadResource;
 
+	/** The locationId this client is scoped to, if any. */
+	readonly locationId: string | undefined;
+
 	private readonly http: HttpClient;
 	private readonly options: FlowhubClientOptions;
 
-	constructor(options: FlowhubClientOptions) {
+	constructor(options: FlowhubClientOptions, locationId?: string | undefined) {
 		this.options = options;
+		this.locationId = locationId;
 		const credentials: FlowhubCredentials = {
 			clientId: options.clientId,
 			apiKey: options.apiKey,
@@ -35,11 +39,15 @@ export class FlowhubClient {
 			retries: options.retries,
 		});
 		this.locations = new LocationsResource(this.http);
-		this.inventory = new InventoryResource(this.http);
+		this.inventory = new InventoryResource(this.http, locationId);
 		this.orderAhead = new OrderAheadResource(this.http);
 	}
 
-	forLocation(_locationId: string): FlowhubClient {
-		return new FlowhubClient({ ...this.options });
+	/**
+	 * Returns a new client scoped to a specific location.
+	 * The scoped client's inventory methods use /v0/locations/{locationId}/... endpoints.
+	 */
+	forLocation(locationId: string): FlowhubClient {
+		return new FlowhubClient(this.options, locationId);
 	}
 }

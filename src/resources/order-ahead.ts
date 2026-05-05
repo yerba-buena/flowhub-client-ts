@@ -1,58 +1,53 @@
 import type { HttpClient } from "../http.js";
-import type {
-	OrderAheadActionParams,
-	OrderAheadStatusParams,
-	OrderAheadSubmitParams,
-} from "../types/orders.js";
+import type { CreateOrderParams, UpdateOrderParams } from "../types/orders.js";
 
 export class OrderAheadResource {
 	constructor(private readonly http: HttpClient) {}
 
-	async submit(params: OrderAheadSubmitParams): Promise<Record<string, unknown>> {
+	/** POST /order-ahead/v0/create — Submit a new order ahead */
+	async create(params: CreateOrderParams): Promise<Record<string, unknown>> {
 		return this.http.request<Record<string, unknown>>({
-			method: "PATCH",
-			path: "/orders/submit",
+			method: "POST",
+			path: "/order-ahead/v0/create",
 			body: params,
 		});
 	}
 
-	async cancel(params: OrderAheadActionParams): Promise<Record<string, unknown>> {
+	/** PATCH /orders/{orderId} — Update an existing order */
+	async update(orderId: string, params: UpdateOrderParams): Promise<Record<string, unknown>> {
 		return this.http.request<Record<string, unknown>>({
 			method: "PATCH",
-			path: "/orders/cancel",
+			path: `/orders/${orderId}`,
 			body: params,
 		});
 	}
 
-	async confirm(params: OrderAheadActionParams): Promise<Record<string, unknown>> {
+	/** POST /orderPostback/{orderId} — Trigger order postback */
+	async postback(orderId: string): Promise<Record<string, unknown>> {
 		return this.http.request<Record<string, unknown>>({
-			method: "PATCH",
-			path: "/orders/confirm",
-			body: params,
+			method: "POST",
+			path: `/orderPostback/${orderId}`,
 		});
 	}
 
-	async complete(params: OrderAheadActionParams): Promise<Record<string, unknown>> {
+	/** GET /order-ahead/v0/orderStatus/{orderId} — Get order status */
+	async getStatus(orderId: string): Promise<Record<string, unknown>> {
 		return this.http.request<Record<string, unknown>>({
-			method: "PATCH",
-			path: "/orders/complete",
-			body: params,
+			path: `/order-ahead/v0/orderStatus/${orderId}`,
 		});
 	}
 
-	async updateStatus(params: OrderAheadStatusParams): Promise<Record<string, unknown>> {
-		return this.http.request<Record<string, unknown>>({
-			method: "PATCH",
-			path: "/orders/status",
-			body: params,
+	/** GET /authTest — Test authentication */
+	async testAuth(): Promise<string> {
+		return this.http.request<string>({
+			path: "/authTest",
 		});
 	}
 
-	async update(params: Record<string, unknown>): Promise<Record<string, unknown>> {
-		return this.http.request<Record<string, unknown>>({
-			method: "PATCH",
-			path: "/orders/update",
-			body: params,
+	/** GET /health — Service health check */
+	async health(): Promise<string> {
+		return this.http.request<string>({
+			path: "/health",
 		});
 	}
 }
