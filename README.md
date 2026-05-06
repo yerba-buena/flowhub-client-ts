@@ -19,7 +19,7 @@ const flowhub = new FlowhubClient({
 });
 
 // List locations
-const { data: locations } = await flowhub.locations.list({ limit: 10 });
+const { data: locations } = await flowhub.locations.list();
 
 for (const loc of locations) {
   console.log(`${loc.locationId}: ${loc.locationName}`);
@@ -30,7 +30,7 @@ for (const loc of locations) {
 
 ```ts
 // List all inventory
-const { data: items } = await flowhub.inventory.list({ limit: 50 });
+const { data: items } = await flowhub.inventory.list();
 
 // Non-zero inventory only
 const { data: inStock } = await flowhub.inventory.listNonZero();
@@ -45,11 +45,6 @@ const { data: byRoom } = await flowhub.inventory.listByRoomsNonZero();
 
 // Per-location endpoints
 const { data: locInventory } = await flowhub.inventory.listByLocation("loc-id");
-
-// Async iteration over all pages
-for await (const item of flowhub.inventory.iterate()) {
-  console.log(`${item.productName}: ${item.quantity} ${item.category}`);
-}
 ```
 
 ## Location scoping
@@ -111,10 +106,10 @@ import {
 } from "@yerba-buena/flowhub-client";
 
 try {
-  await flowhub.locations.get("nonexistent");
+  await flowhub.locations.list();
 } catch (err) {
-  if (err instanceof FlowhubNotFoundError) {
-    console.log("Not found");
+  if (err instanceof FlowhubAuthError) {
+    console.log("Invalid credentials");
   }
   if (err instanceof FlowhubRateLimitError) {
     console.log(`Retry after ${err.retryAfter}s`);

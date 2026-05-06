@@ -7,7 +7,7 @@ const client = new FlowhubClient({
 
 // ── Locations ────────────────────────────────────────────────────────
 
-const { data: locations } = await client.locations.list({ limit: 10 });
+const { data: locations } = await client.locations.list();
 console.log(`Found ${locations.length} locations`);
 
 for (const loc of locations) {
@@ -16,18 +16,9 @@ for (const loc of locations) {
 	);
 }
 
-// Iterate all locations (auto-paginated)
-for await (const loc of client.locations.iterate()) {
-	console.log(`  -> ${loc.locationName}`);
-}
-
 // ── Inventory ────────────────────────────────────────────────────────
 
-// List all inventory with pagination
-const { data: inventory } = await client.inventory.list({
-	locationId: locations[0]!.locationId,
-	limit: 5,
-});
+const { data: inventory } = await client.inventory.list();
 console.log(`\nFound ${inventory.length} inventory items`);
 
 for (const item of inventory) {
@@ -44,15 +35,14 @@ const { data: analytics } = await client.inventory.listAnalytics({
 });
 console.log(`\n${analytics.length} analytics items`);
 
-// Location-scoped inventory (using forLocation)
+// Per-location inventory
+const { data: locItems } = await client.inventory.listByLocation(locations[0]!.locationId);
+console.log(`\n${locItems.length} items at first location`);
+
+// Location-scoped client (all inventory methods route to per-location endpoints)
 const scoped = client.forLocation(locations[0]!.locationId);
 const { data: scopedItems } = await scoped.inventory.list();
-console.log(`\n${scopedItems.length} items at first location`);
-
-// Iterate all inventory (auto-paginated)
-for await (const item of client.inventory.iterate({ limit: 100 })) {
-	console.log(`  ${item.productName}: ${item.quantity}`);
-}
+console.log(`${scopedItems.length} items at first location (via scoped client)`);
 
 // ── Order Ahead (requires accessToken) ───────────────────────────────
 

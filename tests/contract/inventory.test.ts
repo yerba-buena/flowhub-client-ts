@@ -68,25 +68,12 @@ describe("InventoryResource", () => {
 			expect(reqs[0]!.headers.key).toBe("test-api-key");
 		});
 
-		// NOTE: limit/offset are NOT documented in the OpenAPI spec (all endpoints
-		// declare parameters: []). These are sent optimistically; server may ignore.
-		it("sends limit and offset query params (undocumented, optimistic)", async () => {
-			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
-
-			const client = createClient();
-			await client.inventory.list({ limit: 10, offset: 20 });
-
-			expect(reqs[0]!.url).toContain("limit=10");
-			expect(reqs[0]!.url).toContain("offset=20");
-		});
-
 		it("returns { status, data } envelope from server response", async () => {
 			captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
 
 			const client = createClient();
 			const result = await client.inventory.list();
 
-			// Verify client unpacks the envelope shape (not just JSON passthrough)
 			expect(result).toHaveProperty("status");
 			expect(result).toHaveProperty("data");
 			expect(typeof result.status).toBe("number");

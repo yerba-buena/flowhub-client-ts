@@ -23,8 +23,3 @@ export interface Location {
 	readonly timeZone: string;
 	readonly website: string;
 }
-
-export interface ListLocationsParams {
-	readonly limit?: number | undefined;
-	readonly offset?: number | undefined;
-}

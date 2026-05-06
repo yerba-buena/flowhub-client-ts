@@ -56,25 +56,12 @@ describe("LocationsResource", () => {
 			expect(reqs[0]!.key).toBe("test-api-key");
 		});
 
-		// NOTE: limit/offset are NOT documented in the OpenAPI spec (parameters: []).
-		// Sent optimistically; server may ignore them.
-		it("sends limit and offset query params (undocumented, optimistic)", async () => {
-			const reqs = captureLocations();
-
-			const client = createClient();
-			await client.locations.list({ limit: 10, offset: 20 });
-
-			expect(reqs[0]!.url).toContain("limit=10");
-			expect(reqs[0]!.url).toContain("offset=20");
-		});
-
 		it("returns { status, data } envelope from server response", async () => {
 			captureLocations();
 
 			const client = createClient();
 			const result = await client.locations.list();
 
-			// Verify client unpacks the envelope shape (not just JSON passthrough)
 			expect(result).toHaveProperty("status");
 			expect(result).toHaveProperty("data");
 			expect(typeof result.status).toBe("number");
@@ -93,22 +80,6 @@ describe("LocationsResource", () => {
 
 			const client = createClient();
 			await expect(client.locations.list()).rejects.toThrow(FlowhubAuthError);
-		});
-	});
-
-	describe("iterate", () => {
-		it("sends GET to /v0/clientsLocations and yields all items", async () => {
-			const reqs = captureLocations();
-
-			const client = createClient();
-			const locations = [];
-			for await (const loc of client.locations.iterate()) {
-				locations.push(loc);
-			}
-
-			expect(reqs.length).toBeGreaterThanOrEqual(1);
-			expect(reqs[0]!.url).toContain("/v0/clientsLocations");
-			expect(locations).toHaveLength(2);
 		});
 	});
 });

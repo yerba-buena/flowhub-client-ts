@@ -10,7 +10,7 @@ describe.skipIf(SKIP)("Locations integration", () => {
 	});
 
 	it("lists locations", async () => {
-		const result = await client.locations.list({ limit: 5 });
+		const result = await client.locations.list();
 		expect(result.data).toBeInstanceOf(Array);
 		expect(result.data.length).toBeGreaterThan(0);
 	});
