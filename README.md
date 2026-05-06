@@ -2,11 +2,20 @@
 
 Unofficial TypeScript client for the [Flowhub](https://flowhub.co) API. Not affiliated with or endorsed by Flowhub, Inc.
 
+**Related repos:**
+- [flowhub-api-docs](https://github.com/yerba-buena/flowhub-api-docs) — Markdown mirror of the Flowhub developer portal
+- [flowhub-api-docs-scraper](https://github.com/yerba-buena/flowhub-api-docs-scraper) — Scraper that generates the docs mirror
+
 ## Install
 
 ```bash
 npm install @yerba-buena/flowhub-client
 ```
+
+> **Note:** This package is not yet published to npm. For now, install from GitHub:
+> ```bash
+> npm install github:yerba-buena/flowhub-client-ts
+> ```
 
 ## Quick start
 
@@ -129,6 +138,10 @@ const flowhub = new FlowhubClient({
   retries: 3,                        // optional, default 3
 });
 ```
+
+## Issues
+
+If you spot a bug, incorrect API mapping, or missing endpoint, please [open an issue](https://github.com/yerba-buena/flowhub-client-ts/issues).
 
 ## Disclaimer
 
