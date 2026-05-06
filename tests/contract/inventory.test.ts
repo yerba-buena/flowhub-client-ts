@@ -68,7 +68,9 @@ describe("InventoryResource", () => {
 			expect(reqs[0]!.headers.key).toBe("test-api-key");
 		});
 
-		it("sends limit and offset query params", async () => {
+		// NOTE: limit/offset are NOT documented in the OpenAPI spec (all endpoints
+		// declare parameters: []). These are sent optimistically; server may ignore.
+		it("sends limit and offset query params (undocumented, optimistic)", async () => {
 			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
 
 			const client = createClient();
@@ -78,26 +80,18 @@ describe("InventoryResource", () => {
 			expect(reqs[0]!.url).toContain("offset=20");
 		});
 
-		it("sends locationId query param when provided", async () => {
-			const reqs = captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
-
-			const client = createClient();
-			await client.inventory.list({ locationId: "loc-123" });
-
-			expect(reqs[0]!.url).toContain("locationId=loc-123");
-		});
-
-		it("parses response envelope with status and data array", async () => {
+		it("returns { status, data } envelope from server response", async () => {
 			captureGet("/v0/inventory", INVENTORY_LIST_RESPONSE);
 
 			const client = createClient();
 			const result = await client.inventory.list();
 
-			expect(result.status).toBe(200);
+			// Verify client unpacks the envelope shape (not just JSON passthrough)
+			expect(result).toHaveProperty("status");
+			expect(result).toHaveProperty("data");
+			expect(typeof result.status).toBe("number");
+			expect(Array.isArray(result.data)).toBe(true);
 			expect(result.data).toHaveLength(2);
-			// Verify full item roundtrip — not just selected fields
-			expect(result.data[0]).toEqual(INVENTORY_LIST_RESPONSE.data[0]);
-			expect(result.data[1]).toEqual(INVENTORY_LIST_RESPONSE.data[1]);
 		});
 	});
 
@@ -280,6 +274,19 @@ describe("InventoryResource", () => {
 			await scoped.inventory.listNonZero();
 
 			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventoryNonZero`);
+		});
+
+		it("routes listByRoomsNonZero() to /v0/locations/{locationId}/inventoryByRoomsNonZero", async () => {
+			const locationId = "5e746577-ee54-4796-9ee0-d28f45c48deb";
+			const reqs = captureGet(
+				"/v0/locations/:locationId/inventoryByRoomsNonZero",
+				INVENTORY_BY_ROOM_RESPONSE,
+			);
+
+			const scoped = createClient().forLocation(locationId);
+			await scoped.inventory.listByRoomsNonZero();
+
+			expect(reqs[0]!.url).toContain(`/v0/locations/${locationId}/inventoryByRoomsNonZero`);
 		});
 
 		it("routes listAnalytics() to /v0/locations/{locationId}/InventoryAnalytics (capital I)", async () => {

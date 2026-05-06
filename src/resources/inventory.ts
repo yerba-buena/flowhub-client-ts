@@ -10,20 +10,11 @@ import type {
 	ListInventoryParams,
 } from "../types/inventory.js";
 
-function buildInventoryQuery(
-	params?: ListInventoryParams,
-): Record<string, string | number | boolean | undefined> {
-	return {
-		...buildPaginationQuery(params),
-		...(params?.locationId !== undefined ? { locationId: params.locationId } : {}),
-	};
-}
-
 function buildAnalyticsQuery(
 	params?: ListInventoryAnalyticsParams,
 ): Record<string, string | number | boolean | undefined> {
 	return {
-		...buildInventoryQuery(params),
+		...buildPaginationQuery(params),
 		...(params?.includesNotForSaleQuantity !== undefined
 			? { includesNotForSaleQuantity: params.includesNotForSaleQuantity }
 			: {}),
@@ -54,14 +45,14 @@ export class InventoryResource {
 	async list(params?: ListInventoryParams): Promise<FlowhubResponse<InventoryItem>> {
 		return this.http.request<FlowhubResponse<InventoryItem>>({
 			path: this.inventoryPath("inventory"),
-			query: buildInventoryQuery(params),
+			query: buildPaginationQuery(params),
 		});
 	}
 
 	async listNonZero(params?: ListInventoryParams): Promise<FlowhubResponse<InventoryItem>> {
 		return this.http.request<FlowhubResponse<InventoryItem>>({
 			path: this.inventoryPath("inventoryNonZero"),
-			query: buildInventoryQuery(params),
+			query: buildPaginationQuery(params),
 		});
 	}
 
@@ -70,7 +61,7 @@ export class InventoryResource {
 	): Promise<FlowhubResponse<InventoryByRoomItem>> {
 		return this.http.request<FlowhubResponse<InventoryByRoomItem>>({
 			path: this.inventoryPath("inventoryByRoomsNonZero"),
-			query: buildInventoryQuery(params),
+			query: buildPaginationQuery(params),
 		});
 	}
 

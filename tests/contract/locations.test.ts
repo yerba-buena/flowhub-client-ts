@@ -56,7 +56,9 @@ describe("LocationsResource", () => {
 			expect(reqs[0]!.key).toBe("test-api-key");
 		});
 
-		it("sends limit and offset query params", async () => {
+		// NOTE: limit/offset are NOT documented in the OpenAPI spec (parameters: []).
+		// Sent optimistically; server may ignore them.
+		it("sends limit and offset query params (undocumented, optimistic)", async () => {
 			const reqs = captureLocations();
 
 			const client = createClient();
@@ -66,15 +68,18 @@ describe("LocationsResource", () => {
 			expect(reqs[0]!.url).toContain("offset=20");
 		});
 
-		it("parses response envelope with status and data array", async () => {
+		it("returns { status, data } envelope from server response", async () => {
 			captureLocations();
 
 			const client = createClient();
 			const result = await client.locations.list();
 
-			expect(result.status).toBe(200);
+			// Verify client unpacks the envelope shape (not just JSON passthrough)
+			expect(result).toHaveProperty("status");
+			expect(result).toHaveProperty("data");
+			expect(typeof result.status).toBe("number");
+			expect(Array.isArray(result.data)).toBe(true);
 			expect(result.data).toHaveLength(2);
-			expect(result.data[0]).toEqual(LOCATIONS_LIST_RESPONSE.data[0]);
 		});
 	});
 

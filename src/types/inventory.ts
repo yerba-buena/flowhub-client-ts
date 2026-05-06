@@ -80,10 +80,16 @@ export interface InventoryAnalyticsByRoomItem extends InventoryByRoomItem {
 	readonly supplierLicense: string | null;
 }
 
+/**
+ * Query parameters for inventory list endpoints.
+ *
+ * NOTE: The Flowhub OpenAPI spec declares `parameters: []` on all inventory
+ * endpoints. `limit`/`offset` are inherited from {@link PaginationParams} and
+ * sent optimistically — the server may ignore them.
+ */
 export interface ListInventoryParams {
 	readonly limit?: number | undefined;
 	readonly offset?: number | undefined;
-	readonly locationId?: string | undefined;
 }
 
 export interface ListInventoryAnalyticsParams extends ListInventoryParams {
