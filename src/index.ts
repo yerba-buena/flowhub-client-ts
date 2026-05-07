@@ -27,5 +27,19 @@ export type {
 	OrderStatus,
 	UpdateOrderParams,
 } from "./types/orders.js";
+export type {
+	Customer,
+	CustomerGroup,
+	CustomersListParams,
+	CustomerWriteParams,
+	OrdersListResponse,
+	PaginationParams,
+	Sale,
+	SaleItem,
+	SaleItemDiscount,
+	SalePayment,
+	SaleTax,
+	SaleTotals,
+} from "./types/orders-api.js";
 export type { FlowhubResponse } from "./pagination.js";
 export { DEFAULT_BASE_URL, DOCS_SNAPSHOT_DATE } from "./constants.js";

@@ -8,4 +8,4 @@ export const DEFAULT_TIMEOUT_MS = 30_000 as const;
 export const DEFAULT_RETRIES = 3 as const;
 
 /** Date of the docs snapshot used to generate types */
-export const DOCS_SNAPSHOT_DATE = "2026-04-29" as const;
+export const DOCS_SNAPSHOT_DATE = "2026-05-07" as const;

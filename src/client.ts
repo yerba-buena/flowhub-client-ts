@@ -4,6 +4,7 @@ import { AuthTokenResource } from "./resources/auth-token.js";
 import { InventoryResource } from "./resources/inventory.js";
 import { LocationsResource } from "./resources/locations.js";
 import { OrderAheadResource } from "./resources/order-ahead.js";
+import { OrdersResource } from "./resources/orders.js";
 
 export interface FlowhubClientOptions {
 	readonly clientId: string;
@@ -17,6 +18,7 @@ export interface FlowhubClientOptions {
 export class FlowhubClient {
 	readonly locations: LocationsResource;
 	readonly inventory: InventoryResource;
+	readonly orders: OrdersResource;
 	readonly orderAhead: OrderAheadResource;
 	readonly authToken: AuthTokenResource;
 
@@ -42,6 +44,7 @@ export class FlowhubClient {
 		});
 		this.locations = new LocationsResource(this.http);
 		this.inventory = new InventoryResource(this.http, locationId);
+		this.orders = new OrdersResource(this.http);
 		this.orderAhead = new OrderAheadResource(this.http);
 		this.authToken = new AuthTokenResource();
 	}
