@@ -59,12 +59,12 @@ function capture(
 // ── Customers ───────────────────────────────────────────────────────
 
 describe("OrdersResource — Customers", () => {
-	describe("listCustomers", () => {
+	describe("getCustomers", () => {
 		it("sends GET /v1/customers/ with clientId and key headers", async () => {
 			const reqs = capture("get", "/v1/customers/", CUSTOMER_FIXTURE);
 
 			const client = createClient();
-			await client.orders.listCustomers();
+			await client.orders.getCustomers();
 
 			expect(reqs).toHaveLength(1);
 			expect(reqs[0]!.url).toContain("/v1/customers/");
@@ -76,7 +76,7 @@ describe("OrdersResource — Customers", () => {
 			const reqs = capture("get", "/v1/customers/", CUSTOMER_FIXTURE);
 
 			const client = createClient();
-			await client.orders.listCustomers({
+			await client.orders.getCustomers({
 				created_after: "2026-01-01",
 				created_before: "2026-05-01",
 				page: 2,
@@ -165,6 +165,7 @@ describe("OrdersResource — Customers", () => {
 			expect(body.state).toBe("CO");
 			expect(body.type).toBe("recCustomer");
 			expect(body.email).toBe("jane@example.com");
+			expect(body.phone).toBe("5551234567");
 			expect(result.id).toBe(CUSTOMER_FIXTURE.id);
 		});
 	});
@@ -185,8 +186,12 @@ describe("OrdersResource — Customers", () => {
 			expect(reqs[0]!.url).toContain("/v1/customer/cust-123");
 			expect(reqs[0]!.url).toContain("store_id=store-001");
 			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
+			expect(reqs[0]!.headers.key).toBe("test-api-key");
 			const body = reqs[0]!.body as Record<string, unknown>;
+			expect(body.birthDate).toBe("1990-05-15");
 			expect(body.name).toBe("Jane Smith");
+			expect(body.state).toBe("CO");
+			expect(body.type).toBe("recCustomer");
 			expect(result.id).toBe(CUSTOMER_FIXTURE.id);
 		});
 	});
@@ -203,7 +208,7 @@ describe("OrdersResource — Customers", () => {
 			);
 
 			const client = createClient();
-			await expect(client.orders.listCustomers()).rejects.toThrow(FlowhubAuthError);
+			await expect(client.orders.getCustomers()).rejects.toThrow(FlowhubAuthError);
 		});
 	});
 });
@@ -241,6 +246,8 @@ describe("OrdersResource — Sales", () => {
 
 			const url = reqs[0]!.url;
 			expect(url).toContain("created_after=2026-01-01");
+			expect(url).toContain("created_before=2026-05-01");
+			expect(url).toContain("page=1");
 			expect(url).toContain("page_size=50");
 			expect(url).toContain("order_by=asc");
 		});
@@ -256,6 +263,7 @@ describe("OrdersResource — Sales", () => {
 			expect(reqs).toHaveLength(1);
 			expect(reqs[0]!.url).toContain("/v1/orders/findByLocationId/loc-001");
 			expect(reqs[0]!.headers.clientId).toBe("test-client-id");
+			expect(reqs[0]!.headers.key).toBe("test-api-key");
 			expect(result.total).toBe(1);
 			expect(result.orders[0]!.orderStatus).toBe("Sold");
 		});

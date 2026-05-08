@@ -25,8 +25,14 @@ export class OrdersResource {
 
 	// ── Customers ─────────────────────────────────────────────────
 
-	/** GET /v1/customers/ — List all customers */
-	async listCustomers(params?: CustomersListParams): Promise<Customer> {
+	/**
+	 * GET /v1/customers/ — Query customers.
+	 *
+	 * The spec declares a single customer-model response for this endpoint.
+	 * The actual API may return an array or paginated envelope — adjust the
+	 * return type once validated against a live response.
+	 */
+	async getCustomers(params?: CustomersListParams): Promise<Customer> {
 		return this.http.request<Customer>({
 			path: "/v1/customers/",
 			query: {
