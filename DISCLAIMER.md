@@ -12,6 +12,10 @@ The maintainers make no representations about the accuracy, completeness, or fit
 
 The authoritative Flowhub API documentation is at https://flowhub.stoplight.io/. This client library is built from scraped documentation and may contain inaccuracies in types, endpoint paths, or response shapes.
 
+## Dashboard module
+
+The `@yerba-buena/flowhub-client/dashboard` entry point is built on top of **reverse-engineered internal endpoints** used by the Flowhub web dashboard. These endpoints are not part of the public API, are not documented, and have no stability contract. They can change or break without warning. Expect periodic maintenance to keep this module working.
+
 ## Trademark
 
 Flowhub® is a registered trademark of Flowhub, Inc. Use of the name in this project's title and documentation is for identification purposes only and does not imply endorsement.

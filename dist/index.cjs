@@ -18,8 +18,8 @@ var __copyProps = (to, from, except, desc) => {
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/index.ts
-var index_exports = {};
-__export(index_exports, {
+var src_exports = {};
+__export(src_exports, {
   DEFAULT_BASE_URL: () => DEFAULT_BASE_URL,
   DOCS_SNAPSHOT_DATE: () => DOCS_SNAPSHOT_DATE,
   FlowhubAuthError: () => FlowhubAuthError,
@@ -29,7 +29,7 @@ __export(index_exports, {
   FlowhubRateLimitError: () => FlowhubRateLimitError,
   FlowhubValidationError: () => FlowhubValidationError
 });
-module.exports = __toCommonJS(index_exports);
+module.exports = __toCommonJS(src_exports);
 
 // src/auth.ts
 function createAuthHeaders(credentials) {
@@ -46,7 +46,7 @@ function createAuthHeaders(credentials) {
 var DEFAULT_BASE_URL = "https://api.flowhub.co";
 var DEFAULT_TIMEOUT_MS = 3e4;
 var DEFAULT_RETRIES = 3;
-var DOCS_SNAPSHOT_DATE = "2026-04-29";
+var DOCS_SNAPSHOT_DATE = "2026-05-07";
 
 // src/errors.ts
 var FlowhubError = class extends Error {
@@ -436,10 +436,94 @@ var OrderAheadResource = class {
   }
 };
 
+// src/resources/orders.ts
+function paginationQuery(params) {
+  if (!params) return {};
+  return {
+    created_after: params.created_after,
+    created_before: params.created_before,
+    page: params.page,
+    page_size: params.page_size,
+    order_by: params.order_by
+  };
+}
+var OrdersResource = class {
+  constructor(http) {
+    this.http = http;
+  }
+  http;
+  // ── Customers ─────────────────────────────────────────────────
+  /**
+   * GET /v1/customers/ — Query customers.
+   *
+   * The spec declares a single customer-model response for this endpoint.
+   * The actual API may return an array or paginated envelope — adjust the
+   * return type once validated against a live response.
+   */
+  async getCustomers(params) {
+    return this.http.request({
+      path: "/v1/customers/",
+      query: {
+        ...paginationQuery(params),
+        updated_after: params?.updated_after,
+        updated_before: params?.updated_before
+      }
+    });
+  }
+  /** GET /v1/customers/{customerId} — Get a customer by ID */
+  async getCustomerById(customerId, opts) {
+    return this.http.request({
+      path: `/v1/customers/${customerId}`,
+      query: { store_id: opts?.store_id }
+    });
+  }
+  /** GET /v1/customers/findByPhoneNumber — Get a customer by phone number */
+  async getCustomerByPhone(phoneNumber) {
+    return this.http.request({
+      path: "/v1/customers/findByPhoneNumber",
+      query: { phone_number: phoneNumber }
+    });
+  }
+  /** POST /v1/customer?store_id={store_id} — Create a customer */
+  async createCustomer(storeId, params) {
+    return this.http.request({
+      method: "POST",
+      path: "/v1/customer",
+      query: { store_id: storeId },
+      body: params
+    });
+  }
+  /** PUT /v1/customer/{customerId}?store_id={store_id} — Update a customer */
+  async updateCustomer(customerId, storeId, params) {
+    return this.http.request({
+      method: "PUT",
+      path: `/v1/customer/${customerId}`,
+      query: { store_id: storeId },
+      body: params
+    });
+  }
+  // ── Orders (Sales) ────────────────────────────────────────────
+  /** GET /v1/orders/findByCustomerId/{customerId} — List orders for a customer */
+  async listByCustomerId(customerId, params) {
+    return this.http.request({
+      path: `/v1/orders/findByCustomerId/${customerId}`,
+      query: paginationQuery(params)
+    });
+  }
+  /** GET /v1/orders/findByLocationId/{importId} — List orders for a location */
+  async listByLocationId(importId, params) {
+    return this.http.request({
+      path: `/v1/orders/findByLocationId/${importId}`,
+      query: paginationQuery(params)
+    });
+  }
+};
+
 // src/client.ts
 var FlowhubClient = class _FlowhubClient {
   locations;
   inventory;
+  orders;
   orderAhead;
   authToken;
   /** The locationId this client is scoped to, if any. */
@@ -462,6 +546,7 @@ var FlowhubClient = class _FlowhubClient {
     });
     this.locations = new LocationsResource(this.http);
     this.inventory = new InventoryResource(this.http, locationId);
+    this.orders = new OrdersResource(this.http);
     this.orderAhead = new OrderAheadResource(this.http);
     this.authToken = new AuthTokenResource();
   }

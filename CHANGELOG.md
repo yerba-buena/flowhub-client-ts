@@ -14,5 +14,6 @@ All notable changes to this project will be documented in this file.
 - **Orders** resource — `getCustomers()`, `getCustomerById()`, `getCustomerByPhone()`, `createCustomer()`, `updateCustomer()`, `listByCustomerId()`, `listByLocationId()`
 - **Order Ahead** resource — `create()`, `update()`, `postback()`, `getStatus()`, `testAuth()`, `health()`
 - **Auth Token** resource — `create()`
-- Full contract test suite (72 tests) with MSW
-- Integration tests for Locations and Inventory (gated on env vars)
+- Full contract test suite (77 tests) with MSW
+- Integration tests for Locations, Inventory, Orders, and Order Ahead (gated on env vars)
+- **Dashboard module** (`@yerba-buena/flowhub-client/dashboard`) — `FlowhubDashboardClient` for downloading CSV reports from the Flowhub dashboard via reverse-engineered internal endpoints. Uses email/password to mint a session token; supports ~60 report types (`accounting`, `sales-day-store`, `inventory-snapshot`, etc.). Token caching, lazy login, 5-minute refresh margin, 401 retry-once behavior, per-store scoping via `forStore()`.

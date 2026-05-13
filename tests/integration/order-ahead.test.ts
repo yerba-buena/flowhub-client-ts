@@ -13,8 +13,7 @@ try {
 
 // Order Ahead uses separate Auth0 OAuth2 credentials (not the regular API key pair).
 // The audience is fixed per the Access Token API spec.
-const SKIP =
-	!process.env.FLOWHUB_ORDER_AHEAD_CLIENT_ID || !process.env.FLOWHUB_ORDER_AHEAD_CLIENT_SECRET;
+const SKIP = !process.env.FLOWHUB_AUTH0_CLIENT_ID || !process.env.FLOWHUB_AUTH0_CLIENT_SECRET;
 const AUTH0_AUDIENCE = "https://api.flowhub.co";
 
 describe.skipIf(SKIP)("Order Ahead integration", () => {
@@ -25,8 +24,8 @@ describe.skipIf(SKIP)("Order Ahead integration", () => {
 		});
 
 		const tokenResponse = await tempClient.authToken.getToken({
-			client_id: process.env.FLOWHUB_ORDER_AHEAD_CLIENT_ID!,
-			client_secret: process.env.FLOWHUB_ORDER_AHEAD_CLIENT_SECRET!,
+			client_id: process.env.FLOWHUB_AUTH0_CLIENT_ID!,
+			client_secret: process.env.FLOWHUB_AUTH0_CLIENT_SECRET!,
 			audience: AUTH0_AUDIENCE,
 			grant_type: "client_credentials",
 		});

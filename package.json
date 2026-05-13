@@ -27,6 +27,16 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./dashboard": {
+      "import": {
+        "types": "./dist/dashboard/index.d.ts",
+        "default": "./dist/dashboard/index.js"
+      },
+      "require": {
+        "types": "./dist/dashboard/index.d.cts",
+        "default": "./dist/dashboard/index.cjs"
+      }
     }
   },
   "files": ["dist", "README.md", "DISCLAIMER.md", "LICENSE"],
