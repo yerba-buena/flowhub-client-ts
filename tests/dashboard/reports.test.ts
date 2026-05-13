@@ -62,7 +62,7 @@ describe("ReportsResource", () => {
 			store_id: "store-abc",
 		});
 
-		expect(capturedAuth).toBe("Bearer session-token-1");
+		expect(capturedAuth).toBe("session-token-1");
 		expect(capturedUrl).toContain("/analytics/accounting");
 		expect(capturedUrl).toContain("start_date=2026-05-01");
 		expect(capturedUrl).toContain("end_date=2026-05-11");
@@ -138,7 +138,7 @@ describe("ReportsResource", () => {
 				if (downloadAttempts === 1) {
 					return new HttpResponse("Unauthorized", { status: 401 });
 				}
-				expect(auth).toBe("Bearer fresh-token");
+				expect(auth).toBe("fresh-token");
 				return new HttpResponse("ok\n", { status: 200 });
 			}),
 		);

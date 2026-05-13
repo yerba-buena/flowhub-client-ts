@@ -49,8 +49,9 @@ export class DashboardHttp {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json",
+			Origin: "https://app.flowhub.com",
 		};
-		if (token) headers.Authorization = `Bearer ${token}`;
+		if (token) headers.Authorization = token;
 
 		const response = await this.fetchWithTimeout(`${this.baseUrl}/graph/query`, {
 			method: "POST",
@@ -87,7 +88,8 @@ export class DashboardHttp {
 			method: "GET",
 			headers: {
 				Accept: "application/octet-stream",
-				Authorization: `Bearer ${token}`,
+				Authorization: token,
+				Origin: "https://app.flowhub.com",
 			},
 		});
 

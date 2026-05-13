@@ -41,13 +41,15 @@ The exact GraphQL query string is very long because the dashboard requests the f
 
 ## Authentication
 
-Subsequent requests use `Authorization: Bearer <id>` header. Confirmed via CORS preflight:
+Subsequent requests use the `Authorization` header with the **raw UUID token** — no `Bearer ` prefix:
 
 ```
-access-control-request-headers: authorization,traceparent
+Authorization: <login.id UUID>
 ```
 
-(Chrome strips `Authorization` header values from HAR exports, but the preflight reveals the header is in use.)
+Verified empirically: `Bearer <token>`, `Token <token>`, and `Basic <token>` all return `unauthorized`; only the bare token works. Chrome strips `Authorization` header values from HAR exports, which is why this wasn't visible from the captures alone — the CORS preflight confirmed the header was in use, but format had to be discovered by trial.
+
+Additionally, requests must include `Origin: https://app.flowhub.com` (or whatever value the server has CORS-whitelisted). Without it, the analytics endpoints may reject the request.
 
 ## Reports list
 

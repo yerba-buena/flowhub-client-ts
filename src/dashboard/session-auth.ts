@@ -5,8 +5,8 @@ import type { DashboardLoginResponse, FlowhubDashboardCredentials } from "./type
 const REFRESH_MARGIN_SECONDS = 5 * 60;
 
 const LOGIN_QUERY = `
-mutation Login($email: String!, $password: String!) {
-  login(email: $email, password: $password) {
+query Login($email: String!, $password: String!) {
+  login(login: { email: $email, password: $password }) {
     id
     refreshId
     expireTime

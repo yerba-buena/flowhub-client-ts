@@ -86,9 +86,10 @@ var DashboardHttp = class {
   async graphql(request, token) {
     const headers = {
       "Content-Type": "application/json",
-      Accept: "application/json"
+      Accept: "application/json",
+      Origin: "https://app.flowhub.com"
     };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (token) headers.Authorization = token;
     const response = await this.fetchWithTimeout(`${this.baseUrl}/graph/query`, {
       method: "POST",
       headers,
@@ -117,7 +118,8 @@ var DashboardHttp = class {
       method: "GET",
       headers: {
         Accept: "application/octet-stream",
-        Authorization: `Bearer ${token}`
+        Authorization: token,
+        Origin: "https://app.flowhub.com"
       }
     });
     if (!response.ok) {
@@ -264,8 +266,8 @@ var ReportsResource = class {
 // src/dashboard/session-auth.ts
 var REFRESH_MARGIN_SECONDS = 5 * 60;
 var LOGIN_QUERY = `
-mutation Login($email: String!, $password: String!) {
-  login(email: $email, password: $password) {
+query Login($email: String!, $password: String!) {
+  login(login: { email: $email, password: $password }) {
     id
     refreshId
     expireTime
@@ -349,10 +351,7 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
       baseUrl: config.baseUrl ?? DEFAULT_DASHBOARD_BASE_URL,
       timeout: config.timeout ?? DEFAULT_TIMEOUT_MS
     });
-    const auth = new SessionAuth(
-      { email: config.email, password: config.password },
-      http
-    );
+    const auth = new SessionAuth({ email: config.email, password: config.password }, http);
     this.reports = new ReportsResource(http, auth, config.storeId);
   }
   /** Returns a new client scoped to the given storeId for default report params. */
