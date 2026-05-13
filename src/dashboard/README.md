@@ -10,6 +10,36 @@
 
 Downloading CSV reports (sales, transactions, inventory snapshots, etc.) that are only available through the Flowhub dashboard UI. The public Flowhub API does not expose these reports.
 
+## How this differs from the main client
+
+| | `FlowhubClient` (`/`) | `FlowhubDashboardClient` (`/dashboard`) |
+|---|---|---|
+| **Source** | Public, documented Flowhub API | Reverse-engineered internal endpoints used by app.flowhub.com |
+| **Auth** | `clientId` + `apiKey` (issued by Flowhub for API access) | Dashboard user `email` + `password` |
+| **Stability** | Versioned, published spec | None — can change or break without notice |
+| **Returns** | JSON data | Raw CSV bytes (`Buffer`) |
+| **Use this for** | Building integrations, syncing inventory/orders | Pulling reports that aren't in the public API |
+
+Both surfaces live in the same package but are imported separately. Using the dashboard client does **not** require API access from Flowhub — but it does require valid dashboard user credentials.
+
+## Getting credentials
+
+You need a Flowhub dashboard user account. **Use a dedicated service account, not your personal login.**
+
+1. Log into the Flowhub admin dashboard with an account that can manage users.
+2. Create a new user (e.g. `it+reports@yourdomain.com`).
+3. Assign it a role with **only** analytics/reports read access — Flowhub ships a role similar to "Analytics Only" / "Full Analytics Only" that's appropriate. Don't give it permissions to edit inventory, void transactions, manage users, etc. Least privilege.
+4. Set a strong password and store it in your secrets manager.
+5. Find the `store_id` you want to default to (it's a UUID — visible in dashboard URLs like `/store/<uuid>/...`, or returned in `listReports()` response context).
+
+Why a dedicated service account:
+- Personal credentials don't end up in deployment environments
+- Service-account activity is auditable separately
+- Rotation is independent of human users
+- No re-rotation when a team member leaves
+
+See [`.env.example`](../../.env.example) in the repo root for the env var names this module expects.
+
 ## Security: handling credentials
 
 This client requires a Flowhub dashboard email and password. **These are human user credentials with dashboard access** — treat them carefully.
@@ -180,11 +210,17 @@ Internal dashboard endpoints can change without notice. Expect maintenance when:
 - Flowhub changes their auth flow (e.g., adds MFA, switches to a different provider)
 - Flowhub renames query parameters or response fields
 - Flowhub adds bot detection or stricter rate limiting
+- **Flowhub asks you to stop.** They could block your service account, change ToS, or take other action. If that happens, deprecate use of this module.
 
 Recommended operational practices:
 - Run a canary download on a schedule and alert on failure
 - Pin the package version and test before upgrading
 - Have a manual fallback (someone who can log into the dashboard and download by hand) for critical deadlines
+- Be a good citizen: download on a sensible schedule, not in a tight loop. The endpoints aren't rate-limited as far as we've observed, but acting like a normal dashboard user (a few requests per hour, not per second) reduces the risk of bot detection.
+
+## Terms of service
+
+You are using this module against Flowhub's product with credentials owned by your organization. You — not the maintainers of this client — are responsible for ensuring that automated access via your service account complies with Flowhub's terms of service. If unsure, ask Flowhub.
 
 ## Why this exists
 
