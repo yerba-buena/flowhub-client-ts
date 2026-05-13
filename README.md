@@ -12,10 +12,6 @@ Unofficial TypeScript client for the [Flowhub](https://flowhub.co) API. Not affi
 npm install @yerba-buena/flowhub-client
 ```
 
-> **Note:** This package is not yet published to npm. For now, install from GitHub:
-> ```bash
-> npm install github:yerba-buena/flowhub-client-ts
-> ```
 
 ## Quick start
 
