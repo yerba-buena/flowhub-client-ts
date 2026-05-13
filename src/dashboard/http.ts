@@ -45,7 +45,7 @@ export class DashboardHttp {
 		this.fetchFn = options.fetchFn ?? globalThis.fetch;
 	}
 
-	async graphql<T>(request: GraphQLRequest, token?: string): Promise<T> {
+	async graphql<T>(request: GraphQLRequest, token?: string, path = "/graph/query"): Promise<T> {
 		const headers: Record<string, string> = {
 			"Content-Type": "application/json",
 			Accept: "application/json",
@@ -53,7 +53,7 @@ export class DashboardHttp {
 		};
 		if (token) headers.Authorization = token;
 
-		const response = await this.fetchWithTimeout(`${this.baseUrl}/graph/query`, {
+		const response = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
 			method: "POST",
 			headers,
 			body: JSON.stringify(request),

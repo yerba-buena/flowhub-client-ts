@@ -54,6 +54,13 @@ describe("SessionAuth", () => {
 		const variables = capturedBody?.variables as Record<string, string>;
 		expect(variables.email).toBe("alice@example.com");
 		expect(variables.password).toBe("pw");
+
+		// Verify the GraphQL query uses the actual Flowhub schema shape:
+		// it's a query (not mutation) and wraps args in a `login` input object.
+		const query = (capturedBody?.query as string) ?? "";
+		expect(query).toMatch(/query\s+Login/);
+		expect(query).toMatch(/login\(\s*login:\s*\{/);
+		expect(query).not.toMatch(/mutation\s+Login/);
 	});
 
 	it("reuses the cached token across sequential getToken() calls", async () => {

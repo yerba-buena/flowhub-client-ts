@@ -108,7 +108,24 @@ const { data } = await cobbleHill.reports.downloadAccounting({
 
 ## Available reports
 
-Run the dashboard's `GetReports` GraphQL query to enumerate available reports for your account, or use any of these known IDs:
+### Listing reports dynamically
+
+Enumerate every report available to the authenticated user (including custom/shared reports specific to your account) at runtime:
+
+```ts
+const reports = await dashboard.reports.listReports();
+
+for (const r of reports) {
+  console.log(`${r.reportId} — ${r.name} (${r.type})${r.isCustom ? " [custom]" : ""}`);
+  for (const p of r.parameters) {
+    console.log(`  - ${p.key} (${p.type})${p.isRequired ? " *" : ""}`);
+  }
+}
+```
+
+`reportId` values returned here can be passed to `downloadReport(reportId, params)`.
+
+### Known report IDs
 
 **Finance/Accounting:** `accounting`, `end-of-day`, `tax-activity`
 

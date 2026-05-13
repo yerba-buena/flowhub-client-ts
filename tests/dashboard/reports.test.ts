@@ -40,6 +40,78 @@ function makeClient(storeId?: string) {
 }
 
 describe("ReportsResource", () => {
+	it("listReports() queries /analytics/query with GetReports and parses the response", async () => {
+		let capturedUrl = "";
+		let capturedBody: Record<string, unknown> | undefined;
+		server.use(
+			loginHandler(),
+			http.post(`${DASHBOARD_URL}/analytics/query`, async ({ request }) => {
+				capturedUrl = request.url;
+				capturedBody = (await request.json()) as Record<string, unknown>;
+				return HttpResponse.json({
+					data: {
+						reports: [
+							{
+								reportId: "accounting",
+								name: "Accounting",
+								description: "Taxes, discounts, refunds",
+								isCustom: false,
+								isFavorite: false,
+								reportTypeInfo: { type: "finance_accounting" },
+								parameters: [
+									{
+										key: "start_date",
+										type: "date",
+										name: "Start Date",
+										description: null,
+										isHidden: false,
+										isRequired: true,
+										defaultValue: null,
+										options: null,
+									},
+								],
+							},
+							{
+								reportId: "custom-uuid-123",
+								name: "My Custom Report",
+								description: null,
+								isCustom: true,
+								isFavorite: true,
+								reportTypeInfo: { type: "inventory" },
+								parameters: [],
+							},
+						],
+					},
+				});
+			}),
+		);
+
+		const client = makeClient();
+		const reports = await client.reports.listReports();
+
+		expect(capturedUrl).toContain("/analytics/query");
+		expect(capturedBody?.operationName).toBe("GetReports");
+
+		expect(reports).toHaveLength(2);
+		expect(reports[0]).toMatchObject({
+			reportId: "accounting",
+			name: "Accounting",
+			type: "finance_accounting",
+			isCustom: false,
+			isFavorite: false,
+		});
+		expect(reports[0]!.parameters[0]).toMatchObject({
+			key: "start_date",
+			type: "date",
+			isRequired: true,
+		});
+		expect(reports[1]).toMatchObject({
+			reportId: "custom-uuid-123",
+			isCustom: true,
+			isFavorite: true,
+		});
+	});
+
 	it("downloads a report with correct path, auth header, and query params", async () => {
 		let capturedAuth: string | null = null;
 		let capturedUrl = "";

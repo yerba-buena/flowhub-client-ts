@@ -25,6 +25,27 @@ describe.skipIf(SKIP)("Dashboard integration", () => {
 		});
 	}
 
+	it("lists all reports available to the user", async () => {
+		const client = makeClient();
+		const reports = await client.reports.listReports();
+
+		expect(Array.isArray(reports)).toBe(true);
+		expect(reports.length).toBeGreaterThan(0);
+		expect(reports[0]).toHaveProperty("reportId");
+		expect(reports[0]).toHaveProperty("name");
+		expect(reports[0]).toHaveProperty("parameters");
+
+		// Print the full list so the user can see what's available
+		// biome-ignore lint/suspicious/noConsole: integration test diagnostic output
+		console.log(`\n=== Available reports (${reports.length}) ===`);
+		for (const r of reports) {
+			const tag = r.isCustom ? " [CUSTOM]" : "";
+			const fav = r.isFavorite ? " ⭐" : "";
+			// biome-ignore lint/suspicious/noConsole: integration test diagnostic output
+			console.log(`  ${r.reportId.padEnd(40)}  ${r.name}${tag}${fav}  (${r.type})`);
+		}
+	});
+
 	it("authenticates and downloads an accounting report", async () => {
 		const client = makeClient();
 		const result = await client.reports.downloadAccounting({

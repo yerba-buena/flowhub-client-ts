@@ -7,6 +7,9 @@ export type {
 	CommonReportParams,
 	DateRangeParams,
 	ReportDownload,
+	ReportMetadata,
+	ReportParameterMetadata,
+	ReportParameterOption,
 	ReportParams,
 } from "./types.js";
 export {

@@ -83,14 +83,14 @@ var DashboardHttp = class {
     this.timeout = options.timeout;
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
   }
-  async graphql(request, token) {
+  async graphql(request, token, path = "/graph/query") {
     const headers = {
       "Content-Type": "application/json",
       Accept: "application/json",
       Origin: "https://app.flowhub.com"
     };
     if (token) headers.Authorization = token;
-    const response = await this.fetchWithTimeout(`${this.baseUrl}/graph/query`, {
+    const response = await this.fetchWithTimeout(`${this.baseUrl}${path}`, {
       method: "POST",
       headers,
       body: JSON.stringify(request)
@@ -183,6 +183,33 @@ var DashboardHttp = class {
 };
 
 // src/dashboard/reports.ts
+var GET_REPORTS_QUERY = `
+query GetReports {
+  reports {
+    reportId
+    name
+    description
+    isCustom
+    isFavorite
+    reportTypeInfo {
+      type
+    }
+    parameters {
+      key
+      type
+      name
+      description
+      isHidden
+      isRequired
+      defaultValue
+      options {
+        option
+        value
+      }
+    }
+  }
+}
+`;
 var ReportsResource = class {
   constructor(http, auth, defaultStoreId) {
     this.http = http;
@@ -192,6 +219,41 @@ var ReportsResource = class {
   http;
   auth;
   defaultStoreId;
+  /**
+   * List all reports available to the authenticated user, including custom
+   * and shared reports specific to their account. The returned `reportId`
+   * values can be passed to `downloadReport()`.
+   */
+  async listReports() {
+    const token = await this.auth.getToken();
+    const data = await this.http.graphql(
+      {
+        operationName: "GetReports",
+        variables: {},
+        query: GET_REPORTS_QUERY
+      },
+      token,
+      "/analytics/query"
+    );
+    return data.reports.map((r) => ({
+      reportId: r.reportId,
+      name: r.name,
+      description: r.description,
+      type: r.reportTypeInfo.type,
+      isCustom: r.isCustom,
+      isFavorite: r.isFavorite,
+      parameters: r.parameters.map((p) => ({
+        key: p.key,
+        type: p.type,
+        name: p.name,
+        description: p.description,
+        isRequired: p.isRequired,
+        isHidden: p.isHidden,
+        defaultValue: p.defaultValue,
+        options: p.options
+      }))
+    }));
+  }
   /**
    * Download an arbitrary report by its ID.
    *

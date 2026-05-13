@@ -27,7 +27,7 @@ declare class DashboardHttp {
     private readonly timeout;
     private readonly fetchFn;
     constructor(options: DashboardHttpOptions);
-    graphql<T>(request: GraphQLRequest, token?: string): Promise<T>;
+    graphql<T>(request: GraphQLRequest, token?: string, path?: string): Promise<T>;
     downloadBinary(path: string, query: Record<string, string | number | boolean | undefined>, token: string): Promise<{
         data: Buffer;
         filename: string | undefined;
@@ -56,6 +56,29 @@ type DateRangeParams = ReportParams & {
 type CommonReportParams = DateRangeParams & {
     readonly store_id?: string;
 };
+interface ReportParameterOption {
+    readonly option: string;
+    readonly value: string;
+}
+interface ReportParameterMetadata {
+    readonly key: string;
+    readonly type: string;
+    readonly name: string | null;
+    readonly description: string | null;
+    readonly isRequired: boolean;
+    readonly isHidden: boolean;
+    readonly defaultValue: string | null;
+    readonly options: ReadonlyArray<ReportParameterOption> | null;
+}
+interface ReportMetadata {
+    readonly reportId: string;
+    readonly name: string;
+    readonly description: string | null;
+    readonly type: string;
+    readonly isCustom: boolean;
+    readonly isFavorite: boolean;
+    readonly parameters: ReadonlyArray<ReportParameterMetadata>;
+}
 
 /**
  * Manages the dashboard session token lifecycle.
@@ -94,6 +117,12 @@ declare class ReportsResource {
     private readonly auth;
     private readonly defaultStoreId;
     constructor(http: DashboardHttp, auth: SessionAuth, defaultStoreId: string | undefined);
+    /**
+     * List all reports available to the authenticated user, including custom
+     * and shared reports specific to their account. The returned `reportId`
+     * values can be passed to `downloadReport()`.
+     */
+    listReports(): Promise<ReportMetadata[]>;
     /**
      * Download an arbitrary report by its ID.
      *
@@ -139,4 +168,4 @@ declare class FlowhubDashboardClient {
     forStore(storeId: string): FlowhubDashboardClient;
 }
 
-export { type CommonReportParams, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ReportDownload, type ReportParams };
+export { type CommonReportParams, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams };

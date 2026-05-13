@@ -1,7 +1,35 @@
 import { FlowhubAuthError } from "../errors.js";
 import type { DashboardHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
-import type { CommonReportParams, ReportDownload, ReportParams } from "./types.js";
+import type { CommonReportParams, ReportDownload, ReportMetadata, ReportParams } from "./types.js";
+
+const GET_REPORTS_QUERY = `
+query GetReports {
+  reports {
+    reportId
+    name
+    description
+    isCustom
+    isFavorite
+    reportTypeInfo {
+      type
+    }
+    parameters {
+      key
+      type
+      name
+      description
+      isHidden
+      isRequired
+      defaultValue
+      options {
+        option
+        value
+      }
+    }
+  }
+}
+`;
 
 /**
  * Downloads CSV reports from the Flowhub dashboard's internal analytics endpoints.
@@ -18,6 +46,62 @@ export class ReportsResource {
 		private readonly auth: SessionAuth,
 		private readonly defaultStoreId: string | undefined,
 	) {}
+
+	/**
+	 * List all reports available to the authenticated user, including custom
+	 * and shared reports specific to their account. The returned `reportId`
+	 * values can be passed to `downloadReport()`.
+	 */
+	async listReports(): Promise<ReportMetadata[]> {
+		const token = await this.auth.getToken();
+		const data = await this.http.graphql<{
+			reports: Array<{
+				reportId: string;
+				name: string;
+				description: string | null;
+				isCustom: boolean;
+				isFavorite: boolean;
+				reportTypeInfo: { type: string };
+				parameters: Array<{
+					key: string;
+					type: string;
+					name: string | null;
+					description: string | null;
+					isHidden: boolean;
+					isRequired: boolean;
+					defaultValue: string | null;
+					options: Array<{ option: string; value: string }> | null;
+				}>;
+			}>;
+		}>(
+			{
+				operationName: "GetReports",
+				variables: {},
+				query: GET_REPORTS_QUERY,
+			},
+			token,
+			"/analytics/query",
+		);
+
+		return data.reports.map((r) => ({
+			reportId: r.reportId,
+			name: r.name,
+			description: r.description,
+			type: r.reportTypeInfo.type,
+			isCustom: r.isCustom,
+			isFavorite: r.isFavorite,
+			parameters: r.parameters.map((p) => ({
+				key: p.key,
+				type: p.type,
+				name: p.name,
+				description: p.description,
+				isRequired: p.isRequired,
+				isHidden: p.isHidden,
+				defaultValue: p.defaultValue,
+				options: p.options,
+			})),
+		}));
+	}
 
 	/**
 	 * Download an arbitrary report by its ID.

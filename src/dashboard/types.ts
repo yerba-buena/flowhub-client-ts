@@ -25,3 +25,29 @@ export type DateRangeParams = ReportParams & {
 export type CommonReportParams = DateRangeParams & {
 	readonly store_id?: string;
 };
+
+export interface ReportParameterOption {
+	readonly option: string;
+	readonly value: string;
+}
+
+export interface ReportParameterMetadata {
+	readonly key: string;
+	readonly type: string;
+	readonly name: string | null;
+	readonly description: string | null;
+	readonly isRequired: boolean;
+	readonly isHidden: boolean;
+	readonly defaultValue: string | null;
+	readonly options: ReadonlyArray<ReportParameterOption> | null;
+}
+
+export interface ReportMetadata {
+	readonly reportId: string;
+	readonly name: string;
+	readonly description: string | null;
+	readonly type: string;
+	readonly isCustom: boolean;
+	readonly isFavorite: boolean;
+	readonly parameters: ReadonlyArray<ReportParameterMetadata>;
+}
