@@ -73,57 +73,135 @@ purely a convenience.
 
 ## Step 3 — Perform the actions in the dashboard
 
-Walk through these in order. Don't worry about extra clicks or background
-requests in between — we'll filter. After each numbered action, write a
-quick note on your scratchpad: roughly what time it was, what amount you
-entered, and any memo text you typed. We'll use those notes to match
-captured ops to actions.
+You can capture **one HAR per action** (recommended — easier to attribute
+ops to actions, smaller files, can be done over multiple sessions) or
+**one combined HAR** with everything in sequence (faster if you're doing
+it all in one sitting).
 
-If any action doesn't exist in your dashboard (e.g. your store doesn't have
-a separate "cash drop" action), skip it and note that it didn't apply.
+**Per-action workflow:** between actions, click the 🚫 clear button in
+the Network panel, then perform the next action, then save the HAR with
+the filename listed in each step below. If you ran the console snippet,
+also run `window.__flowhubInstrument.reset()` between actions and
+`window.__flowhubInstrument.dump()` after each one if you want the
+companion JSON.
 
-1. **Log out, then log back in.**
-   This captures the Login mutation freshly inside the same recording.
+**Combined workflow:** just leave recording on and walk through all the
+steps, then save one big HAR at the end.
 
-2. **Navigate to the cash management / drawers screen.**
-   Whatever path your dashboard uses — usually under a "POS" or "Cash" or
-   "Drawers" sidebar item. This typically fires a "list current drawers"
-   or "list drawer activity" query, which is the query we'll most want
-   for syncing.
+Either way, write a quick note on your scratchpad for each action:
+roughly what time, what amount you entered, and any memo text. We'll use
+those notes to match captured ops to actions.
 
-3. **Open a drawer.**
-   Use whatever the dashboard's "open drawer" / "assign drawer" /
-   "start shift" flow is. Enter opening counts (or starting balance),
-   then confirm. Note the opening amount on your scratchpad.
+If any action doesn't exist in your dashboard (e.g. your store doesn't
+have a separate "cash drop" action), skip it and note that it didn't
+apply.
 
-4. **Record a pay-in.**
-   Small dollar amount (e.g. $1.00), with a memo like
-   `test pay-in <timestamp>`. Note the amount and memo.
+### Per-action capture sequences
 
-5. **Record a pay-out.**
-   Same — small amount, memo like `test pay-out <timestamp>`.
+Filenames assume the per-action workflow. Adjust the date suffix.
 
-6. **Record a cash drop / safe drop / deposit** (if your dashboard has
-   this as a separate action from pay-out — some stores combine them).
-   Small amount, similar memo.
+**Sequence 1 — Login** (`01-login-YYYY-MM-DD.har`)
 
-7. **Refresh / reload the drawer activity list view.**
-   This catches the dashboard's "list recent drawer activity" query in
-   isolation, which is what our sync code will poll. Manually clicking
-   away and back works too.
+1. If you're currently logged in, log out via the profile/gear menu.
+2. Make sure Network is recording and the log is cleared.
+3. Log in with your dashboard credentials.
+4. Wait for the dashboard home/landing view to fully load.
+5. Save HAR.
 
-8. **Close the drawer.**
-   Use the dashboard's close / end-shift flow. Enter closing counts,
-   finalize. Note the variance shown, if any.
+**Sequence 2 — Navigate to drawers screen** (`02-nav-to-drawers-YYYY-MM-DD.har`)
 
-9. **View the closed drawer's detail page** (if there's a "view details" /
-   "view receipt" / "view summary" action after close). This catches the
-   per-drawer detail query, which is what we'd use to fetch a single
-   drawer's full state.
+1. Clear the Network log (do NOT log out).
+2. Click your way to the cash management / drawers screen (the entry
+   point varies by deployment — often under "POS", "Cash", or "Drawers"
+   in the sidebar).
+3. Wait for the list / dashboard to fully render.
+4. Save HAR.
 
-10. *(Optional, only if your dashboard has it)* **Make any cash adjustment
-    that isn't covered above** — e.g. "correct opening count", "reverse a
-    pay-in". One example each is enough.
+**Sequence 3 — Open a drawer** (`03-open-drawer-YYYY-MM-DD.har`)
+
+1. Clear the Network log.
+2. Click whatever the dashboard's "Open drawer" / "Assign drawer" /
+   "Start shift" button is.
+3. Fill in opening counts or starting balance — use a small, round
+   number (e.g. $100.00) so it's easy to spot in the captured variables.
+4. Confirm / submit.
+5. Wait for the success state to render.
+6. Save HAR. **Scratchpad:** opening amount.
+
+**Sequence 4 — Record a pay-in** (`04-pay-in-YYYY-MM-DD.har`)
+
+1. Clear the Network log.
+2. Trigger the pay-in flow (button name varies — "Pay In", "Add Cash",
+   "Cash In").
+3. Amount: **$1.00**. Memo: `test pay-in <short-timestamp>`
+   (e.g. `test pay-in 1623`).
+4. Confirm / submit.
+5. Save HAR. **Scratchpad:** amount + memo.
+
+**Sequence 5 — Record a pay-out** (`05-pay-out-YYYY-MM-DD.har`)
+
+1. Clear the Network log.
+2. Trigger the pay-out flow ("Pay Out", "Remove Cash", "Cash Out").
+3. Amount: **$1.00**. Memo: `test pay-out <short-timestamp>`.
+4. Confirm / submit.
+5. Save HAR. **Scratchpad:** amount + memo.
+
+**Sequence 6 — Cash drop / safe drop / deposit** (`06-cash-drop-YYYY-MM-DD.har`)
+
+Skip and note "N/A" if your dashboard doesn't have this as a separate
+action from pay-out.
+
+1. Clear the Network log.
+2. Trigger the cash-drop flow.
+3. Amount: **$1.00**. Memo: `test drop <short-timestamp>`.
+4. Confirm / submit.
+5. Save HAR. **Scratchpad:** amount + memo.
+
+**Sequence 7 — Refresh drawer activity list** (`07-refresh-activity-YYYY-MM-DD.har`)
+
+This isolates the query our sync code will most want to poll.
+
+1. Clear the Network log.
+2. Navigate away from the drawer activity page (to any other dashboard
+   page).
+3. Navigate back to the drawer activity page.
+4. Wait for the list to fully render.
+5. Save HAR.
+
+**Sequence 8 — Close the drawer** (`08-close-drawer-YYYY-MM-DD.har`)
+
+1. Clear the Network log.
+2. Trigger the close-drawer / end-shift flow.
+3. Enter closing counts. They don't need to balance — a $2-ish variance
+   is fine and may give us extra fields to model.
+4. Finalize / submit.
+5. Wait for the success state to render.
+6. Save HAR. **Scratchpad:** closing amount + variance shown, if any.
+
+**Sequence 9 — View closed drawer detail** (`09-drawer-detail-YYYY-MM-DD.har`)
+
+Skip if your dashboard doesn't show a per-drawer detail view after close.
+
+1. Clear the Network log.
+2. From the drawer activity list, click into the drawer you just closed.
+3. Wait for the detail view (counts, activity list, totals) to render.
+4. Save HAR.
+
+### Combined-capture summary (alternative to per-action)
+
+If you'd rather walk straight through everything in one HAR, the order is:
+
+1. Log out, then log back in.
+2. Navigate to the cash management / drawers screen.
+3. Open a drawer (note opening amount).
+4. Record a pay-in ($1.00, memo).
+5. Record a pay-out ($1.00, memo).
+6. Record a cash drop / safe drop / deposit if applicable.
+7. Refresh / reload the drawer activity list.
+8. Close the drawer (note variance).
+9. View the closed drawer's detail page if applicable.
+
+Same scratchpad rules apply.
 
 ## Step 4 — Save the captures
 
