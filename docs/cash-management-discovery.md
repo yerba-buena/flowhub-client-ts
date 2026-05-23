@@ -8,9 +8,9 @@
 ## Background
 
 Flowhub's public API has no cash-management endpoints — no drawer open/close,
-no pay-in / pay-out / cash drop. The dashboard at `app.flowhub.com` performs
-all of these internally via GraphQL operations against
-`https://api.flowhub.com/graph/query` (the same endpoint the existing
+no user-to-drawer assignment, no pay-in / pay-out / cash drop. The dashboard
+at `app.flowhub.com` performs all of these internally via GraphQL operations
+against `https://api.flowhub.com/graph/query` (the same endpoint the existing
 `src/dashboard/` module already uses for login and reports metadata).
 
 The plan is to extend the dashboard module with a `cash-management.ts`
@@ -128,7 +128,22 @@ Filenames assume the per-action workflow. Adjust the date suffix.
 5. Wait for the success state to render.
 6. Save HAR. **Scratchpad:** opening amount.
 
-**Sequence 4 — Record a pay-in** (`04-pay-in-YYYY-MM-DD.har`)
+**Sequence 4 — Assign a user to the drawer** (`04-assign-user-YYYY-MM-DD.har`)
+
+After a drawer is open, a user must be assigned to it before pay-ins /
+pay-outs can be posted. Capture this in isolation even if your dashboard
+sometimes combines it with the open step — we need both shapes to know
+whether assigning is a separate mutation or a field on `OpenDrawer`.
+
+1. Clear the Network log.
+2. From the open drawer's screen, trigger the assign-user action
+   ("Assign User", "Assign Cashier", "Take Drawer", or similar).
+3. Pick a user from the dropdown / list. If your test account is the
+   only option, that's fine — note the user's name on your scratchpad.
+4. Confirm / submit.
+5. Save HAR. **Scratchpad:** user assigned + which button you clicked.
+
+**Sequence 5 — Record a pay-in** (`05-pay-in-YYYY-MM-DD.har`)
 
 1. Clear the Network log.
 2. Trigger the pay-in flow (button name varies — "Pay In", "Add Cash",
@@ -138,7 +153,7 @@ Filenames assume the per-action workflow. Adjust the date suffix.
 4. Confirm / submit.
 5. Save HAR. **Scratchpad:** amount + memo.
 
-**Sequence 5 — Record a pay-out** (`05-pay-out-YYYY-MM-DD.har`)
+**Sequence 6 — Record a pay-out** (`06-pay-out-YYYY-MM-DD.har`)
 
 1. Clear the Network log.
 2. Trigger the pay-out flow ("Pay Out", "Remove Cash", "Cash Out").
@@ -146,7 +161,7 @@ Filenames assume the per-action workflow. Adjust the date suffix.
 4. Confirm / submit.
 5. Save HAR. **Scratchpad:** amount + memo.
 
-**Sequence 6 — Cash drop / safe drop / deposit** (`06-cash-drop-YYYY-MM-DD.har`)
+**Sequence 7 — Cash drop / safe drop / deposit** (`07-cash-drop-YYYY-MM-DD.har`)
 
 Skip and note "N/A" if your dashboard doesn't have this as a separate
 action from pay-out.
@@ -157,7 +172,7 @@ action from pay-out.
 4. Confirm / submit.
 5. Save HAR. **Scratchpad:** amount + memo.
 
-**Sequence 7 — Refresh drawer activity list** (`07-refresh-activity-YYYY-MM-DD.har`)
+**Sequence 8 — Refresh drawer activity list** (`08-refresh-activity-YYYY-MM-DD.har`)
 
 This isolates the query our sync code will most want to poll.
 
@@ -168,7 +183,7 @@ This isolates the query our sync code will most want to poll.
 4. Wait for the list to fully render.
 5. Save HAR.
 
-**Sequence 8 — Close the drawer** (`08-close-drawer-YYYY-MM-DD.har`)
+**Sequence 9 — Close the drawer** (`09-close-drawer-YYYY-MM-DD.har`)
 
 1. Clear the Network log.
 2. Trigger the close-drawer / end-shift flow.
@@ -178,7 +193,7 @@ This isolates the query our sync code will most want to poll.
 5. Wait for the success state to render.
 6. Save HAR. **Scratchpad:** closing amount + variance shown, if any.
 
-**Sequence 9 — View closed drawer detail** (`09-drawer-detail-YYYY-MM-DD.har`)
+**Sequence 10 — View closed drawer detail** (`10-drawer-detail-YYYY-MM-DD.har`)
 
 Skip if your dashboard doesn't show a per-drawer detail view after close.
 
@@ -194,12 +209,13 @@ If you'd rather walk straight through everything in one HAR, the order is:
 1. Log out, then log back in.
 2. Navigate to the cash management / drawers screen.
 3. Open a drawer (note opening amount).
-4. Record a pay-in ($1.00, memo).
-5. Record a pay-out ($1.00, memo).
-6. Record a cash drop / safe drop / deposit if applicable.
-7. Refresh / reload the drawer activity list.
-8. Close the drawer (note variance).
-9. View the closed drawer's detail page if applicable.
+4. Assign a user to the drawer.
+5. Record a pay-in ($1.00, memo).
+6. Record a pay-out ($1.00, memo).
+7. Record a cash drop / safe drop / deposit if applicable.
+8. Refresh / reload the drawer activity list.
+9. Close the drawer (note variance).
+10. View the closed drawer's detail page if applicable.
 
 Same scratchpad rules apply.
 
