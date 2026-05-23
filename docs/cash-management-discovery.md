@@ -1,0 +1,199 @@
+# Flowhub Cash Management — Discovery Capture Runbook
+
+> Status: **awaiting capture**. This document is a runbook for you to follow in
+> the Flowhub dashboard so we can reverse-engineer the cash-management
+> endpoints. Once you send me the resulting HAR + console dump, I'll extract
+> the operations, append findings to this doc, and design the resource API.
+
+## Background
+
+Flowhub's public API has no cash-management endpoints — no drawer open/close,
+no pay-in / pay-out / cash drop. The dashboard at `app.flowhub.com` performs
+all of these internally via GraphQL operations against
+`https://api.flowhub.com/graph/query` (the same endpoint the existing
+`src/dashboard/` module already uses for login and reports metadata).
+
+The plan is to extend the dashboard module with a `cash-management.ts`
+resource that calls those same operations through the existing `SessionAuth`
++ `DashboardHttp.graphql()` flow. We just need to see what the dashboard
+sends when each action happens.
+
+The CSV reports `drawers-new` and `drawers-activity` already give batch
+visibility into drawer activity after the fact, but they aren't suitable for
+real-time sync. The GraphQL operations we're after are what the dashboard
+itself uses to list and create these records — much closer to a live feed.
+
+## Pre-flight checklist
+
+- Use a **non-production store** if you have one. Pay-ins and pay-outs you
+  record here will post to a real ledger.
+- Use **small dollar amounts** (e.g. $1) so any cleanup is trivial.
+- Use **Chrome** (Edge / Brave are fine too). Firefox HAR exports work but
+  the format differs slightly — the existing dashboard module was built
+  against Chrome HARs.
+- **Log out fully** before starting, so the Login mutation is captured in the
+  same recording. (We already have the Login shape, but lining it up with
+  the other ops in one HAR makes review easier.)
+- Have a **scratchpad open** (paper, Notes, whatever). You'll jot down each
+  action you take with rough timestamps so we can map captured requests to
+  user actions when reviewing.
+
+## Step 1 — Open DevTools and start recording
+
+1. In the dashboard tab, open DevTools (`Cmd+Opt+I` on Mac,
+   `Ctrl+Shift+I` on Windows/Linux).
+2. Switch to the **Network** tab.
+3. Check **Preserve log**.
+4. Check **Disable cache**.
+5. (Optional) Set the request filter to **Fetch/XHR** so the panel isn't
+   cluttered with image and font loads.
+6. Click the round record button if it isn't already red.
+7. Click the 🚫 (clear) button so the log starts empty.
+
+## Step 2 — Install the console instrumentation (optional but recommended)
+
+In the same tab, open the **Console** panel and paste the entire contents
+of [`scripts/instrument-flowhub.js`](../scripts/instrument-flowhub.js), then
+hit Enter. You should see:
+
+```
+[flowhub-instrument] installed. Perform actions, then call:
+  window.__flowhubInstrument.summary()  // operation counts
+  window.__flowhubInstrument.dump()     // download captured ops as JSON
+```
+
+This logs every Flowhub GraphQL operation as it fires (operation name,
+variables, response) so you can see in real time whether each action
+produced a request and what it was called. It also lets you download a
+redacted JSON file at the end that's much smaller and easier to share than
+a full HAR.
+
+If you skip this step, the HAR alone is enough — the console snippet is
+purely a convenience.
+
+## Step 3 — Perform the actions in the dashboard
+
+Walk through these in order. Don't worry about extra clicks or background
+requests in between — we'll filter. After each numbered action, write a
+quick note on your scratchpad: roughly what time it was, what amount you
+entered, and any memo text you typed. We'll use those notes to match
+captured ops to actions.
+
+If any action doesn't exist in your dashboard (e.g. your store doesn't have
+a separate "cash drop" action), skip it and note that it didn't apply.
+
+1. **Log out, then log back in.**
+   This captures the Login mutation freshly inside the same recording.
+
+2. **Navigate to the cash management / drawers screen.**
+   Whatever path your dashboard uses — usually under a "POS" or "Cash" or
+   "Drawers" sidebar item. This typically fires a "list current drawers"
+   or "list drawer activity" query, which is the query we'll most want
+   for syncing.
+
+3. **Open a drawer.**
+   Use whatever the dashboard's "open drawer" / "assign drawer" /
+   "start shift" flow is. Enter opening counts (or starting balance),
+   then confirm. Note the opening amount on your scratchpad.
+
+4. **Record a pay-in.**
+   Small dollar amount (e.g. $1.00), with a memo like
+   `test pay-in <timestamp>`. Note the amount and memo.
+
+5. **Record a pay-out.**
+   Same — small amount, memo like `test pay-out <timestamp>`.
+
+6. **Record a cash drop / safe drop / deposit** (if your dashboard has
+   this as a separate action from pay-out — some stores combine them).
+   Small amount, similar memo.
+
+7. **Refresh / reload the drawer activity list view.**
+   This catches the dashboard's "list recent drawer activity" query in
+   isolation, which is what our sync code will poll. Manually clicking
+   away and back works too.
+
+8. **Close the drawer.**
+   Use the dashboard's close / end-shift flow. Enter closing counts,
+   finalize. Note the variance shown, if any.
+
+9. **View the closed drawer's detail page** (if there's a "view details" /
+   "view receipt" / "view summary" action after close). This catches the
+   per-drawer detail query, which is what we'd use to fetch a single
+   drawer's full state.
+
+10. *(Optional, only if your dashboard has it)* **Make any cash adjustment
+    that isn't covered above** — e.g. "correct opening count", "reverse a
+    pay-in". One example each is enough.
+
+## Step 4 — Save the captures
+
+1. In the DevTools **Network** tab, right-click any row → **Save all as
+   HAR with content**. Save as `cash-management-{YYYY-MM-DD}.har`.
+
+2. *(If you ran the console instrumentation:)*
+   In the **Console** panel, run:
+
+   ```js
+   window.__flowhubInstrument.summary()
+   ```
+
+   This prints a table of how many times each operation fired. Use it as
+   a sanity check — there should be at least one entry per action you
+   performed.
+
+   Then run:
+
+   ```js
+   window.__flowhubInstrument.dump()
+   ```
+
+   This triggers a download of a redacted JSON file
+   (`flowhub-instrument-<timestamp>.json`).
+
+3. Send both files (the `.har` and the instrumentation `.json`) back here,
+   along with your scratchpad notes mapping actions to rough timestamps
+   and amounts.
+
+## Step 5 — What I'll do with the captures
+
+When the files arrive, I'll:
+
+1. Run [`scripts/extract-graphql-from-har.mjs`](../scripts/extract-graphql-from-har.mjs)
+   over the HAR to pull out only the Flowhub GraphQL POSTs, with
+   credentials redacted.
+2. Cross-reference against your scratchpad notes + the instrumentation
+   dump to attribute each operation to a user action.
+3. Append a `## Capture results` section to the bottom of this doc with,
+   for each action: operation name, variables shape, response shape, and
+   any quirks (e.g. operations that fire twice, polling queries that take
+   a since-cursor variable, etc).
+4. **Then** — informed by what we actually captured plus the existing
+   patterns in `src/dashboard/reports.ts` and `src/resources/` — design
+   the resource API shape and propose it before implementing.
+5. Build out `src/dashboard/cash-management.ts` + types + tests, mirroring
+   the reports module's structure.
+
+## Security notes on what you're sharing
+
+**The HAR contains your live session token.** The `Authorization` header
+in every captured request is your dashboard session ID (a UUID, not a
+JWT). It's valid for ~4 hours from the Login moment in the capture. Anyone
+who gets the raw HAR within that window can impersonate you against the
+dashboard until the token expires.
+
+In practice:
+
+- Sharing the HAR in this session is fine — the channel is private.
+- Don't post the raw HAR in a public issue, gist, screenshot, or PR.
+- After we're done with the capture, **log out of the dashboard** to
+  invalidate the captured token immediately.
+
+**The instrumentation JSON dump is safer.** It redacts the `password`
+variable on the Login mutation and the entire `login` response block
+(which contains the access token and refresh token). It doesn't include
+request headers at all. If you need to share something less sensitive,
+share that instead — though the HAR has more detail and is what the
+extractor script consumes.
+
+**The repo already ignores `*.har`** via `.gitignore`, so accidentally
+committing a captured HAR is not possible without going out of your way.
