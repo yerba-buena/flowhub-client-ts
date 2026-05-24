@@ -230,6 +230,18 @@ interface UpdateDrawerInput {
     /** cents */
     readonly dropTriggerBalance: number;
 }
+/**
+ * Shared shape for all four cash-event mutations (drop, pop, pay-in,
+ * pay-out). Server-side variable wrappers differ (`drop:` vs `payin:` etc.)
+ * but the inner payload is identical.
+ */
+interface CashEventParams {
+    /** cents — for `pop` this is typically 0 (audit-only). */
+    readonly total: number;
+    readonly reason: string;
+    /** UUID of the user performing the action. */
+    readonly userId: string;
+}
 
 interface DashboardHttpOptions {
     readonly baseUrl: string;
@@ -409,6 +421,32 @@ declare class DrawersResource {
      * `counts.closingCounts`. The drawer must currently be open.
      */
     close(id: string, count: CountRecord): Promise<Drawer>;
+    /**
+     * Pay-in: cash added to the drawer from outside normal sales (e.g.
+     * replenishing change from another register). Effect: `cashBalance +=
+     * total`, `cashRevenue` unchanged. Appends to `counts.payins[]`.
+     */
+    payIn(drawerId: string, params: CashEventParams): Promise<Drawer>;
+    /**
+     * Pay-out: cash removed from the drawer to pay something/someone that
+     * isn't a deposit (vendor, tip-out, supplies). Effect: `cashBalance -=
+     * total`, `cashRevenue -= total` (recorded as negative revenue).
+     * Appends to `counts.payouts[]`.
+     */
+    payOut(drawerId: string, params: CashEventParams): Promise<Drawer>;
+    /**
+     * Drop: cash removed from the drawer for deposit (to safe / bank).
+     * Effect: `cashBalance -= total`, `cashRevenue` unchanged. Appends to
+     * `counts.drops[]`. Triggered manually or in response to `needsDrop`
+     * flipping true when `cashBalance` exceeds `dropTriggerBalance`.
+     */
+    drop(drawerId: string, params: CashEventParams): Promise<Drawer>;
+    /**
+     * Pop: open the drawer with no cash change — equivalent to a "No Sale"
+     * button on a traditional register. Audit-trail only. `total` is
+     * usually 0. Appends to `counts.pops[]`.
+     */
+    pop(drawerId: string, params: CashEventParams): Promise<Drawer>;
     private withAuthRetry;
 }
 
@@ -514,4 +552,4 @@ declare class FlowhubDashboardClient {
     forStore(storeId: string): FlowhubDashboardClient;
 }
 
-export { type CashEvent, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerRoom, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerRoom, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource };

@@ -6,6 +6,7 @@ export {
 export { DrawersResource } from "./cash-management.js";
 export type {
 	CashEvent,
+	CashEventParams,
 	CountRecord,
 	CreateDrawerInput,
 	Denominations,

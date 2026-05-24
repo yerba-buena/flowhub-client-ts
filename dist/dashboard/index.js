@@ -209,6 +209,38 @@ mutation CloseDrawer($id: String!, $count: CountRecordInput!) {
   }
 }
 `;
+var MAKE_DROP_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakeDrop($drawerId: String!, $drop: CashEventInput!) {
+  makeDrop(drawerId: $drawerId, drop: $drop) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_POP_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePop($drawerId: String!, $pop: CashEventInput!) {
+  makePop(drawerId: $drawerId, pop: $pop) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_PAYIN_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePayin($drawerId: String!, $payin: CashEventInput!) {
+  makePayin(drawerId: $drawerId, payin: $payin) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_PAYOUT_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePayout($drawerId: String!, $payout: CashEventInput!) {
+  makePayout(drawerId: $drawerId, payout: $payout) {
+    ...DrawerFields
+  }
+}
+`;
 var DrawersResource = class {
   constructor(http, auth) {
     this.http = http;
@@ -426,6 +458,80 @@ var DrawersResource = class {
       )
     );
     return data.closeDrawer;
+  }
+  /**
+   * Pay-in: cash added to the drawer from outside normal sales (e.g.
+   * replenishing change from another register). Effect: `cashBalance +=
+   * total`, `cashRevenue` unchanged. Appends to `counts.payins[]`.
+   */
+  async payIn(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePayin",
+          variables: { drawerId, payin: params },
+          query: MAKE_PAYIN_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePayin;
+  }
+  /**
+   * Pay-out: cash removed from the drawer to pay something/someone that
+   * isn't a deposit (vendor, tip-out, supplies). Effect: `cashBalance -=
+   * total`, `cashRevenue -= total` (recorded as negative revenue).
+   * Appends to `counts.payouts[]`.
+   */
+  async payOut(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePayout",
+          variables: { drawerId, payout: params },
+          query: MAKE_PAYOUT_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePayout;
+  }
+  /**
+   * Drop: cash removed from the drawer for deposit (to safe / bank).
+   * Effect: `cashBalance -= total`, `cashRevenue` unchanged. Appends to
+   * `counts.drops[]`. Triggered manually or in response to `needsDrop`
+   * flipping true when `cashBalance` exceeds `dropTriggerBalance`.
+   */
+  async drop(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakeDrop",
+          variables: { drawerId, drop: params },
+          query: MAKE_DROP_MUTATION
+        },
+        token
+      )
+    );
+    return data.makeDrop;
+  }
+  /**
+   * Pop: open the drawer with no cash change — equivalent to a "No Sale"
+   * button on a traditional register. Audit-trail only. `total` is
+   * usually 0. Appends to `counts.pops[]`.
+   */
+  async pop(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePop",
+          variables: { drawerId, pop: params },
+          query: MAKE_POP_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePop;
   }
   async withAuthRetry(fn) {
     const tryOnce = async () => {

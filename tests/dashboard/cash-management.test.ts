@@ -589,6 +589,116 @@ describe("DrawersResource.close", () => {
 	});
 });
 
+describe("DrawersResource cash events", () => {
+	const eventParams = { total: 5000, reason: "test", userId: "user-1" };
+	const eventPayload = {
+		id: "ev-1",
+		total: 5000,
+		reason: "test",
+		timestamp: "2026-05-24T11:00:00.123Z",
+		user_id: "user-1",
+		balance_before: 30000,
+		balance_after: 35000,
+	};
+
+	it("payIn calls MakePayin with { drawerId, payin } and returns the updated drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				MakePayin: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							makePayin: {
+								...SAMPLE_DRAWER,
+								counts: {
+									...SAMPLE_DRAWER.counts,
+									cashBalance: 35000,
+									payins: [eventPayload],
+									totalPaidIn: 5000,
+								},
+							},
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.payIn("drawer-uuid-1", eventParams);
+
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", payin: eventParams });
+		expect(drawer.counts?.payins).toHaveLength(1);
+		expect(drawer.counts?.payins?.[0]?.balance_after).toBe(35000);
+		expect(drawer.counts?.totalPaidIn).toBe(5000);
+	});
+
+	it("payOut calls MakePayout with { drawerId, payout }", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				MakePayout: ({ variables }) => {
+					capturedVars = variables;
+					return { data: { makePayout: SAMPLE_DRAWER } };
+				},
+			}),
+		);
+
+		const client = makeClient();
+		await client.drawers.payOut("drawer-uuid-1", eventParams);
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", payout: eventParams });
+	});
+
+	it("drop calls MakeDrop with { drawerId, drop }", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				MakeDrop: ({ variables }) => {
+					capturedVars = variables;
+					return { data: { makeDrop: SAMPLE_DRAWER } };
+				},
+			}),
+		);
+
+		const client = makeClient();
+		await client.drawers.drop("drawer-uuid-1", eventParams);
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", drop: eventParams });
+	});
+
+	it("pop calls MakePop with { drawerId, pop } and tolerates total: 0", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		const popParams = { total: 0, reason: "no-sale audit", userId: "user-1" };
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				MakePop: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							makePop: {
+								...SAMPLE_DRAWER,
+								counts: {
+									...SAMPLE_DRAWER.counts,
+									pops: [{ ...eventPayload, total: 0, balance_after: 30000 }],
+								},
+							},
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.pop("drawer-uuid-1", popParams);
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", pop: popParams });
+		expect(drawer.counts?.pops).toHaveLength(1);
+		expect(drawer.counts?.pops?.[0]?.total).toBe(0);
+	});
+});
+
 describe("DrawersResource auth retry", () => {
 	it("retries once on FlowhubAuthError by invalidating and re-logging in", async () => {
 		const loginTokens = ["tok-stale", "tok-fresh"];

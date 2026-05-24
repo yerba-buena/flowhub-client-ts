@@ -251,3 +251,16 @@ export interface UpdateDrawerInput {
 	/** cents */
 	readonly dropTriggerBalance: number;
 }
+
+/**
+ * Shared shape for all four cash-event mutations (drop, pop, pay-in,
+ * pay-out). Server-side variable wrappers differ (`drop:` vs `payin:` etc.)
+ * but the inner payload is identical.
+ */
+export interface CashEventParams {
+	/** cents — for `pop` this is typically 0 (audit-only). */
+	readonly total: number;
+	readonly reason: string;
+	/** UUID of the user performing the action. */
+	readonly userId: string;
+}

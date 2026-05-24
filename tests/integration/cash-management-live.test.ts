@@ -171,4 +171,106 @@ describe.skipIf(SKIP)("Cash management live integration", () => {
 		expect(closed.counts?.ClosedAt).not.toBeNull();
 		expect(closed.counts?.closingCounts?.total).toBe(1);
 	});
+
+	describe("with the drawer open", () => {
+		beforeAll(async () => {
+			const client = makeClient();
+			await client.drawers.open(drawerId, tinyCount("cash event suite open"));
+		});
+
+		afterAll(async () => {
+			const client = makeClient();
+			try {
+				await client.drawers.close(drawerId, tinyCount("cash event suite close"));
+			} catch {
+				// best effort — the outer afterAll will try again
+			}
+		});
+
+		const eventReason = (kind: string) => `AUTOMATED-TEST: ${kind} @ ${new Date().toISOString()}`;
+
+		it("payIn appends a new event to counts.payins[]", async () => {
+			const client = makeClient();
+			const before = await client.drawers.get(drawerId);
+			const beforeLen = before?.counts?.payins?.length ?? 0;
+
+			const reason = eventReason("payIn");
+			const after = await client.drawers.payIn(drawerId, {
+				total: 1,
+				reason,
+				userId,
+			});
+
+			const events = after.counts?.payins ?? [];
+			expect(events.length).toBe(beforeLen + 1);
+			const last = events[events.length - 1];
+			expect(last?.total).toBe(1);
+			expect(last?.reason).toBe(reason);
+			expect(last?.user_id).toBe(userId);
+			expect(last?.balance_after).toBe((last?.balance_before ?? 0) + 1);
+		});
+
+		it("payOut appends a new event to counts.payouts[]", async () => {
+			const client = makeClient();
+			const before = await client.drawers.get(drawerId);
+			const beforeLen = before?.counts?.payouts?.length ?? 0;
+
+			const reason = eventReason("payOut");
+			const after = await client.drawers.payOut(drawerId, {
+				total: 1,
+				reason,
+				userId,
+			});
+
+			const events = after.counts?.payouts ?? [];
+			expect(events.length).toBe(beforeLen + 1);
+			const last = events[events.length - 1];
+			expect(last?.total).toBe(1);
+			expect(last?.reason).toBe(reason);
+			expect(last?.user_id).toBe(userId);
+			expect(last?.balance_after).toBe((last?.balance_before ?? 0) - 1);
+		});
+
+		it("drop appends a new event to counts.drops[]", async () => {
+			const client = makeClient();
+			const before = await client.drawers.get(drawerId);
+			const beforeLen = before?.counts?.drops?.length ?? 0;
+
+			const reason = eventReason("drop");
+			const after = await client.drawers.drop(drawerId, {
+				total: 1,
+				reason,
+				userId,
+			});
+
+			const events = after.counts?.drops ?? [];
+			expect(events.length).toBe(beforeLen + 1);
+			const last = events[events.length - 1];
+			expect(last?.total).toBe(1);
+			expect(last?.reason).toBe(reason);
+			expect(last?.user_id).toBe(userId);
+			expect(last?.balance_after).toBe((last?.balance_before ?? 0) - 1);
+		});
+
+		it("pop appends a new event to counts.pops[] with no balance change", async () => {
+			const client = makeClient();
+			const before = await client.drawers.get(drawerId);
+			const beforeLen = before?.counts?.pops?.length ?? 0;
+			const balanceBefore = before?.counts?.cashBalance ?? 0;
+
+			const reason = eventReason("pop");
+			const after = await client.drawers.pop(drawerId, {
+				total: 0,
+				reason,
+				userId,
+			});
+
+			const events = after.counts?.pops ?? [];
+			expect(events.length).toBe(beforeLen + 1);
+			const last = events[events.length - 1];
+			expect(last?.total).toBe(0);
+			expect(last?.reason).toBe(reason);
+			expect(after.counts?.cashBalance).toBe(balanceBefore);
+		});
+	});
 });
