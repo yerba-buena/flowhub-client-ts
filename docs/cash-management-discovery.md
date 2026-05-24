@@ -202,6 +202,185 @@ Skip if your dashboard doesn't show a per-drawer detail view after close.
 3. Wait for the detail view (counts, activity list, totals) to render.
 4. Save HAR.
 
+## Capture results
+
+### Source captures
+
+- `7a5e1912-flowhubdashboardreport.har` (2026-05-24) — single combined HAR
+  covering nav + drawer CRUD + user assignment + open/close + drawer detail
+  view. Pay-in, pay-out, cash-drop NOT exercised in this capture.
+
+### Endpoint
+
+All cash-management traffic goes to `POST https://api.flowhub.com/graph/query`
+with `Authorization: <session-uuid>` (no `Bearer` prefix), same as the
+existing reports module. CORS preflight `OPTIONS` requests also fire on every
+operation but carry no payload.
+
+### Money & types
+
+- **Money is integer cents.** $300 → `30000`, $1000 drop trigger → `100000`.
+- **Drawer state is derived**, not enumerated:
+  `open = openedAt != null && closedAt == null`,
+  `closed = closedAt != null`,
+  `not-yet-opened = openedAt == null`.
+- **Drawer ↔ User is many-to-many** via `drawer.users[]`. Assignment is
+  managed by `AddDrawerUser` / `RemoveDrawerUser` mutations keyed on
+  `{drawerId, userId}`.
+- **All entity IDs are UUIDs.**
+
+### Polling query
+
+`GetDrawers` is the single polymorphic query used for both list and detail:
+
+| Variables | Use |
+|---|---|
+| `{orderBy, orderDirection, hidden}` | List view — fires on a ~5–8s polling interval while the drawers screen is open, plus immediately after every mutation as a refetch. **This is what our sync code polls.** |
+| `{id: <drawerUuid>}` | Single-drawer detail — same response shape, filtered to one drawer. |
+| `{}` | All drawers, no filter — observed but use case unclear, probably an SSR/hydration fetch. |
+
+Returns `data.drawers[]`, each item is a `Drawer` with this shape (selected
+fields):
+
+```
+Drawer {
+  id, name, type ("REC"|"MED"?), openedAt, closedAt,
+  dropTriggerBalance, needsDrop,
+  rooms: [{ id, name }],
+  users: [{ id, email, meta: { firstName, lastName } }],
+  counts: DrawerCounts | null
+}
+
+DrawerCounts {
+  id, drawerId,
+  openedAt, openedByUser,
+  ClosedAt, closedByUser,           // note capitalised "ClosedAt" — server typo
+  openingCashBalance, cashBalance,
+  closingCashBalance,
+  openingCounts: CountRecord | null,
+  closingCounts: CountRecord | null,
+  cashRevenue, debitRevenue, achRevenue, giftCardRevenue,
+  debitBalance, achBalance, debitTipRevenue,
+  closingDebitBalance, closingRevenue,
+  payins, payouts, pops, drops,    // arrays — populated by pay-in/out/drop mutations (NOT YET CAPTURED)
+  totalPaidIn, totalPaidOut, totalDropped,
+  totalRevenueSinceOpen
+}
+
+CountRecord {
+  total, notes,
+  denominations: {
+    pennies, nickels, dimes, quarters,
+    ones, twos, fives, tens, twenties, fifties, hundreds
+  }
+}
+```
+
+### Mutations captured
+
+All mutations carry a large shared fragment block (`CountRecordFields`,
+`DrawerCountFields`, `DrawerFields`) and return the full updated `Drawer`
+on success.
+
+**CreateDrawer**
+```
+variables: { name, dropTriggerBalance, type, rooms: [roomId...] }
+returns:   data.createDrawer = Drawer (with openedAt: null, counts: null)
+```
+
+**UpdateDrawer**
+```
+variables: { id, name, type, rooms: [roomId...], dropTriggerBalance }
+returns:   data.updateDrawer = Drawer
+```
+Observed firing with identical variables on a no-op Edit→Save, so the
+server tolerates that. (Edit→Cancel does not fire a mutation.)
+
+**DeleteDrawer**
+```
+variables: { id }
+returns:   data.deleteDrawer = []   // empty array on success
+```
+
+**OpenDrawer**
+```
+variables: {
+  id,                  // existing drawer's UUID
+  count: CountRecord   // opening count + denominations + free-form notes
+}
+returns:   data.openDrawer = Drawer (counts.openingCounts, counts.openedAt populated)
+```
+
+**CloseDrawer**
+```
+variables: {
+  id,
+  count: CountRecord   // closing count
+}
+returns:   data.closeDrawer = Drawer (counts.ClosedAt, counts.closingCounts populated)
+```
+
+**AddDrawerUser** / **RemoveDrawerUser**
+```
+variables: { drawerId, userId }
+returns:   data.addDrawerUser | removeDrawerUser = Drawer  (with users[] updated)
+```
+
+### Supporting queries captured
+
+**GetUsers** — `{ storeUsers: true }` returns store-scoped users with id,
+email, meta, phoneNumber, stores, role.permissions. Used to populate the
+user dropdown when assigning.
+
+**GetRooms** — no variables, returns `[{ id, name, isForSale }]`. Used to
+populate the rooms multi-select when creating/editing a drawer.
+
+**GetDrawerTips** — `{ drawerCountId }` returns `[{ name, amount }]`. Fires
+when viewing a drawer's detail/counts view between open and close. Likely
+relevant for end-of-shift reconciliation but not core to pay-in/out/drop
+sync.
+
+### Still missing — needs follow-up capture
+
+The drawer-counts schema includes `payins`, `payouts`, `pops`, `drops`,
+`totalPaidIn`, `totalPaidOut`, `totalDropped` fields but none of those
+mutations were exercised. Expected operation names (educated guess):
+`CreatePayIn` / `RecordPayIn`, `CreatePayOut` / `RecordPayOut`,
+`CreateDrop` / `RecordDrop` — but we need to capture them to know for sure.
+
+See "Next capture" in the runbook below.
+
+## Next capture — pay-in / pay-out / cash drop
+
+Combined into a single short capture since they're closely related.
+
+**Pre-flight:**
+1. Make sure there's at least one OPEN drawer with a user assigned to it —
+   the dashboard probably won't let you pay-in to a closed/unassigned
+   drawer. (Open one fresh if needed; you've done it before.)
+2. Same DevTools setup as before.
+
+**Sequence A — Pay-in / pay-out / drop** (`pay-actions-YYYY-MM-DD.har`)
+
+1. Clear Network log.
+2. Navigate to the open, assigned drawer's detail page.
+3. Click **Pay In** → amount $1.00, memo `test pay-in <HHMM>` → confirm.
+4. Click **Pay Out** → amount $1.00, memo `test pay-out <HHMM>` → confirm.
+5. If your dashboard has a separate **Cash Drop / Safe Drop / Deposit**
+   action: → amount $1.00, memo `test drop <HHMM>` → confirm.
+6. Wait a few seconds for `GetDrawers` to refetch.
+7. Save HAR as `pay-actions-YYYY-MM-DD.har`.
+
+**Scratchpad** (just jot here, no need to capture separately):
+
+- Which button labels did you click for each action?
+- Were the actions all reachable from one screen, or did each have its
+  own modal / sub-page?
+- Did the running drawer total visibly update after each action?
+
+If you don't want to combine them, capture each separately — same file
+naming convention as the earlier sequences.
+
 ### Combined-capture summary (alternative to per-action)
 
 If you'd rather walk straight through everything in one HAR, the order is:
