@@ -1,8 +1,11 @@
 import { DEFAULT_TIMEOUT_MS } from "../constants.js";
 import { FlowhubError } from "../errors.js";
+import { DrawersResource } from "./cash-management.js";
 import { DashboardHttp } from "./http.js";
 import { ReportsResource } from "./reports.js";
+import { RoomsResource } from "./rooms.js";
 import { SessionAuth } from "./session-auth.js";
+import { UsersResource } from "./users.js";
 
 export const DEFAULT_DASHBOARD_BASE_URL = "https://api.flowhub.com" as const;
 
@@ -16,6 +19,9 @@ export interface FlowhubDashboardClientConfig {
 
 export class FlowhubDashboardClient {
 	readonly reports: ReportsResource;
+	readonly drawers: DrawersResource;
+	readonly users: UsersResource;
+	readonly rooms: RoomsResource;
 	readonly storeId: string | undefined;
 
 	private readonly config: FlowhubDashboardClientConfig;
@@ -36,6 +42,9 @@ export class FlowhubDashboardClient {
 		});
 		const auth = new SessionAuth({ email: config.email, password: config.password }, http);
 		this.reports = new ReportsResource(http, auth, config.storeId);
+		this.drawers = new DrawersResource(http, auth);
+		this.users = new UsersResource(http, auth);
+		this.rooms = new RoomsResource(http, auth);
 	}
 
 	/** Returns a new client scoped to the given storeId for default report params. */

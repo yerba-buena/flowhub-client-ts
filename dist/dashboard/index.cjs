@@ -21,12 +21,15 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var dashboard_exports = {};
 __export(dashboard_exports, {
   DEFAULT_DASHBOARD_BASE_URL: () => DEFAULT_DASHBOARD_BASE_URL,
+  DrawersResource: () => DrawersResource,
   FlowhubAuthError: () => FlowhubAuthError,
   FlowhubDashboardClient: () => FlowhubDashboardClient,
   FlowhubError: () => FlowhubError,
   FlowhubNotFoundError: () => FlowhubNotFoundError,
   FlowhubRateLimitError: () => FlowhubRateLimitError,
-  FlowhubValidationError: () => FlowhubValidationError
+  FlowhubValidationError: () => FlowhubValidationError,
+  RoomsResource: () => RoomsResource,
+  UsersResource: () => UsersResource
 });
 module.exports = __toCommonJS(dashboard_exports);
 
@@ -70,6 +73,201 @@ var FlowhubValidationError = class extends FlowhubError {
     super(message, { statusCode: 422, requestId: options?.requestId, cause: options?.cause });
     this.name = "FlowhubValidationError";
     this.errors = Object.freeze(options?.errors ?? []);
+  }
+};
+
+// src/dashboard/cash-management.ts
+var DRAWER_FIELDS = `
+fragment DrawerFields on Drawer {
+  id
+  name
+  type
+  openedAt
+  closedAt
+  dropTriggerBalance
+  needsDrop
+  rooms { id name }
+  users { id email meta { firstName lastName } }
+  counts {
+    id
+    drawerId
+    openedAt
+    openedByUser { id email meta { firstName lastName } }
+    ClosedAt
+    closedByUser { id email meta { firstName lastName } }
+    openingCashBalance
+    cashBalance
+    closingCashBalance
+    openingCounts {
+      total
+      notes
+      denominations {
+        pennies nickels dimes quarters
+        ones twos fives tens twenties fifties hundreds
+      }
+    }
+    closingCounts {
+      total
+      notes
+      denominations {
+        pennies nickels dimes quarters
+        ones twos fives tens twenties fifties hundreds
+      }
+    }
+    cashRevenue
+    debitRevenue
+    achRevenue
+    giftCardRevenue
+    debitBalance
+    achBalance
+    debitTipRevenue
+    closingDebitBalance
+    closingRevenue
+    payins  { id total reason timestamp user_id balance_before balance_after }
+    payouts { id total reason timestamp user_id balance_before balance_after }
+    drops   { id total reason timestamp user_id balance_before balance_after }
+    pops    { id total reason timestamp user_id balance_before balance_after }
+    totalPaidIn
+    totalPaidOut
+    totalDropped
+    totalRevenueSinceOpen
+  }
+}
+`;
+var GET_DRAWERS_QUERY = `
+${DRAWER_FIELDS}
+query GetDrawers($id: String, $hidden: Boolean, $orderBy: String, $orderDirection: String) {
+  drawers(id: $id, hidden: $hidden, orderBy: $orderBy, orderDirection: $orderDirection) {
+    ...DrawerFields
+  }
+}
+`;
+var GET_DRAWER_ACTIVITIES_QUERY = `
+${DRAWER_FIELDS}
+query GetDrawerActivities($id: String!, $startDate: String!, $endDate: String!) {
+  drawerActivities(id: $id, startDate: $startDate, endDate: $endDate) {
+    actionTimestamp
+    action
+    subaction
+    employeeName
+    snapshot { ...DrawerFields }
+    changedValues {
+      name        { to from }
+      type        { to from }
+      dropTriggerBalance { to from }
+      rooms       { to { id name } from { id name } }
+      users       { to { id email meta { firstName lastName } } from { id email meta { firstName lastName } } }
+    }
+  }
+}
+`;
+var GET_DRAWER_TIPS_QUERY = `
+query GetDrawerTips($drawerCountId: String!) {
+  drawerTips(drawerCountId: $drawerCountId) {
+    name
+    amount
+  }
+}
+`;
+var DrawersResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  /**
+   * List drawers. With no params, returns all drawers. Pass `hidden: false`
+   * to exclude soft-deleted drawers (matches what the dashboard's drawers
+   * page polls every ~5 seconds).
+   */
+  async list(params = {}) {
+    const variables = {};
+    if (params.hidden !== void 0) variables.hidden = params.hidden;
+    if (params.orderBy !== void 0) variables.orderBy = params.orderBy;
+    if (params.orderDirection !== void 0) variables.orderDirection = params.orderDirection;
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawers",
+          variables,
+          query: GET_DRAWERS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawers;
+  }
+  /**
+   * Fetch a single drawer by ID. Returns `null` if the server returns an
+   * empty list (the drawer doesn't exist or is hidden).
+   */
+  async get(id) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawers",
+          variables: { id },
+          query: GET_DRAWERS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawers[0] ?? null;
+  }
+  /**
+   * Audit feed for a single drawer over a date range. Includes create /
+   * update / open / close / drop / pop / payin / payout events with the
+   * full drawer snapshot at each point.
+   */
+  async listActivity(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawerActivities",
+          variables: {
+            id: drawerId,
+            startDate: params.startDate,
+            endDate: params.endDate
+          },
+          query: GET_DRAWER_ACTIVITIES_QUERY
+        },
+        token
+      )
+    );
+    return data.drawerActivities;
+  }
+  /**
+   * Tip totals associated with a particular drawer count (between an open
+   * and a close). Keyed by `drawerCountId`, NOT the drawer's own ID.
+   */
+  async listTips(drawerCountId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawerTips",
+          variables: { drawerCountId },
+          query: GET_DRAWER_TIPS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawerTips;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
   }
 };
 
@@ -325,6 +523,53 @@ var ReportsResource = class {
   }
 };
 
+// src/dashboard/rooms.ts
+var GET_ROOMS_QUERY = `
+query GetRooms {
+  rooms {
+    id
+    name
+    isForSale
+  }
+}
+`;
+var RoomsResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  async list() {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetRooms",
+          variables: {},
+          query: GET_ROOMS_QUERY
+        },
+        token
+      )
+    );
+    return data.rooms;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/dashboard/session-auth.ts
 var REFRESH_MARGIN_SECONDS = 5 * 60;
 var LOGIN_QUERY = `
@@ -394,10 +639,89 @@ var SessionAuth = class {
   }
 };
 
+// src/dashboard/users.ts
+var GET_USERS_QUERY = `
+query GetUsers(
+  $storeUsers: Boolean
+  $storeId: String
+  $storeIds: [String!]
+  $status: String
+  $orderBy: String
+  $isInternal: Boolean
+) {
+  users(
+    storeUsers: $storeUsers
+    storeId: $storeId
+    storeIds: $storeIds
+    status: $status
+    orderBy: $orderBy
+    isInternal: $isInternal
+  ) {
+    id
+    email
+    meta { firstName lastName }
+    phoneNumber
+    stores { id name }
+    role { id name permissions }
+  }
+}
+`;
+var UsersResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  /**
+   * List users. Pass `storeUsers: true` to scope to users assigned to a
+   * store (the most common case when populating a "who performed this
+   * action" dropdown).
+   */
+  async list(params = {}) {
+    const variables = {};
+    if (params.storeUsers !== void 0) variables.storeUsers = params.storeUsers;
+    if (params.storeId !== void 0) variables.storeId = params.storeId;
+    if (params.storeIds !== void 0) variables.storeIds = params.storeIds;
+    if (params.status !== void 0) variables.status = params.status;
+    if (params.orderBy !== void 0) variables.orderBy = params.orderBy;
+    if (params.isInternal !== void 0) variables.isInternal = params.isInternal;
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetUsers",
+          variables,
+          query: GET_USERS_QUERY
+        },
+        token
+      )
+    );
+    return data.users;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/dashboard/client.ts
 var DEFAULT_DASHBOARD_BASE_URL = "https://api.flowhub.com";
 var FlowhubDashboardClient = class _FlowhubDashboardClient {
   reports;
+  drawers;
+  users;
+  rooms;
   storeId;
   config;
   constructor(config) {
@@ -415,6 +739,9 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
     });
     const auth = new SessionAuth({ email: config.email, password: config.password }, http);
     this.reports = new ReportsResource(http, auth, config.storeId);
+    this.drawers = new DrawersResource(http, auth);
+    this.users = new UsersResource(http, auth);
+    this.rooms = new RoomsResource(http, auth);
   }
   /** Returns a new client scoped to the given storeId for default report params. */
   forStore(storeId) {
@@ -424,11 +751,14 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_DASHBOARD_BASE_URL,
+  DrawersResource,
   FlowhubAuthError,
   FlowhubDashboardClient,
   FlowhubError,
   FlowhubNotFoundError,
   FlowhubRateLimitError,
-  FlowhubValidationError
+  FlowhubValidationError,
+  RoomsResource,
+  UsersResource
 });
 //# sourceMappingURL=index.cjs.map
