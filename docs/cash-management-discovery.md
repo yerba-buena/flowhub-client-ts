@@ -206,9 +206,12 @@ Skip if your dashboard doesn't show a per-drawer detail view after close.
 
 ### Source captures
 
-- `7a5e1912-flowhubdashboardreport.har` (2026-05-24) — single combined HAR
-  covering nav + drawer CRUD + user assignment + open/close + drawer detail
-  view. Pay-in, pay-out, cash-drop NOT exercised in this capture.
+- `7a5e1912-flowhubdashboardreport.har` (2026-05-24) — nav + drawer CRUD +
+  user assignment + open/close + drawer detail. Pay-in / pay-out / drop /
+  pop NOT exercised.
+- `caf40214-flowhubdashboardreport2.har` (2026-05-24) — fills the gap:
+  create + open + drop + pop + pay-in + pay-out + close + delete on a
+  single test drawer. Activity feed (`GetDrawerActivities`) also exercised.
 
 ### Endpoint
 
@@ -340,46 +343,133 @@ when viewing a drawer's detail/counts view between open and close. Likely
 relevant for end-of-shift reconciliation but not core to pay-in/out/drop
 sync.
 
-### Still missing — needs follow-up capture
+### Cash event mutations
 
-The drawer-counts schema includes `payins`, `payouts`, `pops`, `drops`,
-`totalPaidIn`, `totalPaidOut`, `totalDropped` fields but none of those
-mutations were exercised. Expected operation names (educated guess):
-`CreatePayIn` / `RecordPayIn`, `CreatePayOut` / `RecordPayOut`,
-`CreateDrop` / `RecordDrop` — but we need to capture them to know for sure.
+All four cash-event mutations share an identical variable shape and return
+the full updated `Drawer`. The event is appended to the matching array on
+`Drawer.counts.{drops|pops|payins|payouts}`.
 
-See "Next capture" in the runbook below.
+| Mutation | Action | Effect on cashBalance | Effect on cashRevenue |
+|---|---|---|---|
+| `MakeDrop` | Cash removed from drawer for deposit (to safe / bank). | -total | 0 |
+| `MakePop` | "Pop" the drawer open with no cash change — equivalent to the "No Sale" button on a traditional register. Audit trail only. Total is usually 0. | 0 | 0 |
+| `MakePayin` | Cash added to drawer from outside the drawer's normal sales (e.g. replenishing change from another register). | +total | 0 |
+| `MakePayout` | Cash removed from drawer to pay something/someone that isn't a deposit (vendor, tip-out, supplies). Recorded as negative revenue. | -total | -total |
 
-## Next capture — pay-in / pay-out / cash drop
+**Shape (all four identical apart from the wrapper key name):**
 
-Combined into a single short capture since they're closely related.
+```
+MakeDrop:    variables: { drawerId, drop:    { total, reason, userId } }
+MakePop:     variables: { drawerId, pop:     { total, reason, userId } }
+MakePayin:   variables: { drawerId, payin:   { total, reason, userId } }
+MakePayout:  variables: { drawerId, payout:  { total, reason, userId } }
 
-**Pre-flight:**
-1. Make sure there's at least one OPEN drawer with a user assigned to it —
-   the dashboard probably won't let you pay-in to a closed/unassigned
-   drawer. (Open one fresh if needed; you've done it before.)
-2. Same DevTools setup as before.
+returns: data.make{Drop|Pop|Payin|Payout} = Drawer
+```
 
-**Sequence A — Pay-in / pay-out / drop** (`pay-actions-YYYY-MM-DD.har`)
+**Per-event payload appended to `Drawer.counts.{drops|pops|payins|payouts}`** —
+note the snake_case fields here (the rest of the response is camelCase):
 
-1. Clear Network log.
-2. Navigate to the open, assigned drawer's detail page.
-3. Click **Pay In** → amount $1.00, memo `test pay-in <HHMM>` → confirm.
-4. Click **Pay Out** → amount $1.00, memo `test pay-out <HHMM>` → confirm.
-5. If your dashboard has a separate **Cash Drop / Safe Drop / Deposit**
-   action: → amount $1.00, memo `test drop <HHMM>` → confirm.
-6. Wait a few seconds for `GetDrawers` to refetch.
-7. Save HAR as `pay-actions-YYYY-MM-DD.har`.
+```
+{
+  id,                // event UUID
+  total,             // cents
+  reason,            // free text
+  timestamp,         // ISO 8601 with nanosecond precision
+  user_id,           // who performed the action
+  balance_before,    // drawer cash balance before this event (cents)
+  balance_after      // drawer cash balance after this event (cents)
+}
+```
 
-**Scratchpad** (just jot here, no need to capture separately):
+### Activity feed
 
-- Which button labels did you click for each action?
-- Were the actions all reachable from one screen, or did each have its
-  own modal / sub-page?
-- Did the running drawer total visibly update after each action?
+**GetDrawerActivities** — per-drawer audit log.
 
-If you don't want to combine them, capture each separately — same file
-naming convention as the earlier sequences.
+```
+variables: { id, startDate: "YYYY-MM-DD", endDate: "YYYY-MM-DD" }
+returns:   data.drawerActivities = [DrawerActivity]
+```
+
+`DrawerActivity` shape:
+
+```
+{
+  actionTimestamp,
+  action,              // e.g. "create", "update", "open", "close" (+ drop/pop/payin/payout assumed but not captured)
+  subaction,           // e.g. "add user", "remove user" — null otherwise
+  employeeName,        // human-readable
+  snapshot,            // full Drawer state at the time of the event
+  changedValues        // { name, type, dropTriggerBalance, rooms, users: { to, from }, counts } — only for update events
+}
+```
+
+Note: the captures only show `action="create"` and `action="update"` with
+`subaction="add user"|"remove user"`. We don't have confirmed shapes for
+`action="open"|"close"|"drop"|"pop"|"payin"|"payout"` because the activity
+feed wasn't refetched after those mutations.
+
+**Important for sync:** the activity feed is **not** needed for sync. The
+`Drawer.counts.{drops|pops|payins|payouts}` arrays returned by `GetDrawers`
+already contain every cash event with full detail (id, timestamp, total,
+reason, user_id, balance_before/after). Diffing those arrays between polls
+gives you a complete event stream without needing the activity feed.
+
+### Printer receipt endpoints (out of band)
+
+The dashboard fires REST `GET` requests to `/printing/drawer/<countId>/...`
+to generate PDF receipts:
+
+```
+GET /printing/drawer/{drawerCountId}/open
+GET /printing/drawer/{drawerCountId}/close
+GET /printing/drawer/{drawerCountId}/drop/{dropId}
+GET /printing/drawer/{drawerCountId}/pop/{popId}
+GET /printing/drawer/{drawerCountId}/payin/{payinId}
+GET /printing/drawer/{drawerCountId}/payout/{payoutId}
+```
+
+Not core to sync. Worth noting for completeness — a client could trigger
+print jobs to mirror the dashboard's receipt PDFs.
+
+### PIN / session re-verification
+
+The Flowhub store this capture was taken against has an idle-timeout PIN
+setting. When the dashboard prompts for a PIN, the user enters it via a
+client-side modal — **no PIN-validation request fires to the server in
+either HAR**. The PIN gate appears to be UI-only as long as the session
+token is still valid; the PIN was entered before the recording started
+in the second HAR, and no separate auth/verify endpoint fired during any
+of the sensitive mutations (drop / pop / payin / payout / close).
+
+If a Flowhub session has actually expired, mutations will return 401 and
+the existing dashboard module already handles that by re-logging in once
+and retrying (see `src/dashboard/reports.ts`). No PIN field is needed on
+any client method.
+
+### Sync strategy
+
+Poll `GetDrawers` (no variables, or `{hidden: false}`) at the same
+~5–8 second cadence the dashboard uses. For each polled drawer, diff the
+`counts.{drops|pops|payins|payouts}` arrays against the previous snapshot
+by event `id` to detect new events. Each event carries a high-resolution
+`timestamp`, so events can be replayed in order even if multiple show up
+in the same poll.
+
+Lifecycle changes (drawer opened, drawer closed) are detectable by
+watching for `counts.openedAt` / `counts.ClosedAt` transitioning from null
+to a timestamp.
+
+User assignment changes are detectable by diffing `drawer.users[]` by `id`.
+
+No webhooks or websockets were observed. Polling is the only mechanism.
+
+## Discovery complete
+
+All cash-management mutations and supporting queries have been captured
+and documented above. The next step is designing the resource API shape
+in `src/dashboard/cash-management.ts` and implementing it against the
+existing `SessionAuth` + `DashboardHttp.graphql()` flow.
 
 ### Combined-capture summary (alternative to per-action)
 
