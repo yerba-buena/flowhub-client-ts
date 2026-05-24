@@ -171,6 +171,196 @@ for (const r of reports) {
 
 **Compliance:** `new-york-sales`, `new-york-inventory`, `regulatory-reported-sales-failures`
 
+## Cash management
+
+The dashboard client also exposes Flowhub's cash-management surface — drawers, opening / closing counts, drop / pop / pay-in / pay-out events, the audit feed, tips, and PDF receipts. Plus a `DrawerWatcher` that polls and emits a typed event stream you can sync into your own DB.
+
+Same caveats as the reports surface: these are internal endpoints, undocumented, and may break.
+
+### Core concepts
+
+- **Money is integer cents everywhere.** $300 → `30000`. `dropTriggerBalance: 100_000` means a $1,000 drop trigger. JSDoc marks every monetary field.
+- **Drawer state is derived, not enum'd.** A drawer is *not yet opened* when `openedAt == null`, *open* when `openedAt != null && closedAt == null`, and *closed* when `closedAt != null`.
+- **Drawer ↔ User is many-to-many** via `drawer.users[]`. Manage with `assignUser` / `unassignUser`.
+- **All entity IDs are UUIDs** (typed as `string`).
+- **Two server-side quirks are preserved verbatim** to match the wire format: `DrawerCounts.ClosedAt` is capitalised (server typo), and the cash-event payload fields are snake_case (`user_id`, `balance_before`, `balance_after`).
+
+### Listing and reading drawers
+
+```ts
+const drawers = await dashboard.drawers.list({ hidden: false });
+const one = await dashboard.drawers.get("drawer-uuid");
+```
+
+### Drawer CRUD and user assignment
+
+```ts
+const created = await dashboard.drawers.create({
+  name: "Register 2",
+  type: "REC",                     // "REC" | "MED"
+  rooms: ["room-uuid-1"],          // room UUIDs from dashboard.rooms.list()
+  dropTriggerBalance: 100_000,     // cents — $1,000
+});
+
+await dashboard.drawers.update(created.id, {
+  name: "Register 2 — Renamed",
+  type: "REC",
+  rooms: ["room-uuid-1", "room-uuid-2"],
+  dropTriggerBalance: 150_000,
+});
+
+await dashboard.drawers.assignUser(created.id, "user-uuid");
+await dashboard.drawers.unassignUser(created.id, "user-uuid");
+
+await dashboard.drawers.delete(created.id);
+```
+
+`dashboard.users.list({ storeUsers: true })` and `dashboard.rooms.list()` are read-only helpers to look up the UUIDs you'll need for `assignUser` / `create`.
+
+### Drawer lifecycle (open / close)
+
+```ts
+import type { CountRecord } from "@yerba-buena/flowhub-client/dashboard";
+
+const openingCount: CountRecord = {
+  total: 30_000,                   // cents — $300 starting cash
+  notes: "Morning shift",
+  denominations: {
+    pennies: 0, nickels: 0, dimes: 0, quarters: 0,
+    ones: 100, twos: 0, fives: 20, tens: 5,
+    twenties: 5, fifties: 0, hundreds: 0,
+  },
+};
+const opened = await dashboard.drawers.open(drawerId, openingCount);
+
+// ... cash events happen over the course of the shift ...
+
+const closingCount: CountRecord = { /* counted cash at end of shift */ };
+const closed = await dashboard.drawers.close(drawerId, closingCount);
+```
+
+The returned drawer reflects post-mutation state — `opened.counts.openedAt` is populated, `closed.counts.ClosedAt` is populated (note the capitalisation).
+
+### Cash events (drop / pop / pay-in / pay-out)
+
+All four take the same shape: `{ total, reason, userId }`. `total` is cents.
+
+```ts
+// $50 drop to the safe
+await dashboard.drawers.drop(drawerId, {
+  total: 5_000,
+  reason: "Mid-shift drop",
+  userId: cashierUserId,
+});
+
+// $20 pay-in from another register (replenishing change)
+await dashboard.drawers.payIn(drawerId, {
+  total: 2_000,
+  reason: "Change from main till",
+  userId: cashierUserId,
+});
+
+// Tip out a vendor — recorded as negative revenue
+await dashboard.drawers.payOut(drawerId, {
+  total: 1_500,
+  reason: "Delivery driver tip",
+  userId: cashierUserId,
+});
+
+// No-sale audit entry — total is typically 0
+await dashboard.drawers.pop(drawerId, {
+  total: 0,
+  reason: "Customer asked for change",
+  userId: cashierUserId,
+});
+```
+
+Each mutation returns the full updated `Drawer`. The new event is appended to one of `drawer.counts.{drops,pops,payins,payouts}[]` and `cashBalance` is adjusted (see the JSDoc on each method for the exact effect).
+
+### Audit feed and tips
+
+```ts
+const activities = await dashboard.drawers.listActivity(drawerId, {
+  startDate: "2026-05-01",
+  endDate: "2026-05-31",
+});
+
+const tips = await dashboard.drawers.listTips(drawerCountId);
+// note: keyed by drawer.counts.id, NOT the drawer's own id
+```
+
+### `DrawerWatcher` — sync drawer events into your own system
+
+The headline feature for anyone integrating Flowhub into a cash-management or reconciliation system. Polls `drawers.list()` on a cadence (default 5s, matching the dashboard), diffs each snapshot against the previous, and emits a typed `AsyncIterable<DrawerEvent>`.
+
+```ts
+import { DrawerWatcher } from "@yerba-buena/flowhub-client/dashboard";
+
+const watcher = new DrawerWatcher({
+  drawers: dashboard.drawers,
+  intervalMs: 5_000,                       // default
+  drawerIds: ["drawer-uuid-1"],            // optional filter
+  emitInitial: false,                      // default: baseline silently
+  onError: (err) => console.warn(err),     // transient errors don't crash
+});
+
+for await (const event of watcher.events()) {
+  switch (event.kind) {
+    case "drawer.opened":
+      // event.drawer
+      break;
+    case "drawer.closed":
+      // event.drawer
+      break;
+    case "cash.payIn":
+    case "cash.payOut":
+    case "cash.drop":
+    case "cash.pop":
+      // event.drawer, event.event (CashEvent — total/reason/user_id/balance_*)
+      break;
+    case "user.assigned":
+    case "user.unassigned":
+      // event.drawer, event.user
+      break;
+    case "drawer.created":
+    case "drawer.deleted":
+    case "drawer.updated":
+      // ...
+      break;
+  }
+}
+
+// Stop by breaking out of the loop OR calling stop():
+await watcher.stop();
+```
+
+**Backpressure is built in.** The implementation `yield`s one event at a time, so polling waits until your handler is done with the previous event before producing more. A slow consumer back-pressures the source rather than queueing events in memory.
+
+The first snapshot is baseline-only — no events fire for the drawers already there. Pass `emitInitial: true` to emit `drawer.created` for each drawer in the initial snapshot if you want to seed downstream state.
+
+Stopping cleanly: `await watcher.stop()` sets a flag and aborts any in-flight sleep, so the iterator terminates promptly (no waiting out the full interval). Breaking out of `for await` calls `stop()` automatically via the iterator's `return()`.
+
+### Receipt PDFs
+
+```ts
+// Pure URL builder — no network call. Useful for embedding in a UI.
+const url = dashboard.drawers.buildReceiptUrl({
+  drawerCountId: counts.id,        // counts.id, NOT drawer.id
+  kind: "open",                    // "open" | "close" | "drop" | "pop" | "payin" | "payout"
+});
+
+// Fetch the PDF bytes.
+const { data, contentType, filename } = await dashboard.drawers.downloadReceipt({
+  drawerCountId: counts.id,
+  kind: "drop",
+  eventId: "drop-uuid",            // required for drop/pop/payin/payout, omitted for open/close
+});
+import { writeFile } from "node:fs/promises";
+await writeFile(filename ?? "drop.pdf", data);
+```
+
+The `kind` values use lowercase `payin` / `payout` to match Flowhub's URL paths — different from the camelCase `cash.payIn` / `cash.payOut` event kinds emitted by the watcher.
+
 ## Token lifecycle
 
 The client logs in lazily on first use, caches the session token in memory, and refreshes it 5 minutes before expiry (~4-hour token lifetime). If a request returns 401, the client invalidates the cached token, re-logs in once, and retries the request. If the retry also 401s, it throws `FlowhubAuthError` — no infinite loops.

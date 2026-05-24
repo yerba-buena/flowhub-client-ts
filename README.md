@@ -143,7 +143,7 @@ If you spot a bug, incorrect API mapping, or missing endpoint, please [open an i
 
 See [DISCLAIMER.md](./DISCLAIMER.md). This is an unofficial project maintained by Yerba Buena Brands, LLC.
 
-For CSV report downloads from the Flowhub dashboard (reverse-engineered, not part of the public API), see [`src/dashboard/README.md`](./src/dashboard/README.md).
+For CSV report downloads and cash-management (drawers, drop / pay-in / pay-out events, `DrawerWatcher`) from the Flowhub dashboard — reverse-engineered, not part of the public API — see [`src/dashboard/README.md`](./src/dashboard/README.md).
 
 ## License
 
