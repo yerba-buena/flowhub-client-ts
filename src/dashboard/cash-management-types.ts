@@ -290,6 +290,26 @@ export interface DrawerSource {
 	list(params?: ListDrawersParams): Promise<Drawer[]>;
 }
 
+/**
+ * Receipt kinds correspond to URL path segments on Flowhub's
+ * /printing/drawer endpoint. Note the lowercase `payin` / `payout` —
+ * these match the wire format, not the camelCase DrawerEvent kinds.
+ */
+export type ReceiptKind = "open" | "close" | "drop" | "pop" | "payin" | "payout";
+
+export interface ReceiptOptions {
+	readonly drawerCountId: string;
+	readonly kind: ReceiptKind;
+	/** Required for drop / pop / payin / payout. Omitted for open / close. */
+	readonly eventId?: string;
+}
+
+export interface ReceiptDownload {
+	readonly data: Buffer;
+	readonly contentType: string;
+	readonly filename: string | undefined;
+}
+
 export interface DrawerWatcherOptions {
 	readonly drawers: DrawerSource;
 	/** Poll interval in milliseconds. Default 5000 — matches the dashboard. */

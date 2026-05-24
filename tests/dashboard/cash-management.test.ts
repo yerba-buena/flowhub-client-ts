@@ -699,6 +699,147 @@ describe("DrawersResource cash events", () => {
 	});
 });
 
+describe("DrawersResource receipts", () => {
+	describe("buildReceiptUrl", () => {
+		it("builds the open / close URL with no eventId", () => {
+			const client = makeClient();
+			expect(client.drawers.buildReceiptUrl({ drawerCountId: "c-1", kind: "open" })).toBe(
+				`${DASHBOARD_URL}/printing/drawer/c-1/open`,
+			);
+			expect(client.drawers.buildReceiptUrl({ drawerCountId: "c-1", kind: "close" })).toBe(
+				`${DASHBOARD_URL}/printing/drawer/c-1/close`,
+			);
+		});
+
+		it("builds the drop / pop / payin / payout URL with an eventId", () => {
+			const client = makeClient();
+			for (const kind of ["drop", "pop", "payin", "payout"] as const) {
+				expect(
+					client.drawers.buildReceiptUrl({
+						drawerCountId: "c-1",
+						kind,
+						eventId: "ev-9",
+					}),
+				).toBe(`${DASHBOARD_URL}/printing/drawer/c-1/${kind}/ev-9`);
+			}
+		});
+
+		it("throws if eventId is missing for drop / pop / payin / payout", () => {
+			const client = makeClient();
+			for (const kind of ["drop", "pop", "payin", "payout"] as const) {
+				expect(() => client.drawers.buildReceiptUrl({ drawerCountId: "c-1", kind })).toThrow(
+					/require an eventId/,
+				);
+			}
+		});
+
+		it("throws if eventId is supplied for open / close", () => {
+			const client = makeClient();
+			expect(() =>
+				client.drawers.buildReceiptUrl({
+					drawerCountId: "c-1",
+					kind: "open",
+					eventId: "ev-9",
+				}),
+			).toThrow(/must NOT include an eventId/);
+		});
+	});
+
+	describe("downloadReceipt", () => {
+		it("GETs the receipt path with Accept: application/pdf and returns bytes + contentType", async () => {
+			let capturedAuth: string | null = null;
+			let capturedAccept: string | null = null;
+			let capturedUrl = "";
+			const pdfBytes = Buffer.from("%PDF-1.4 test\n", "utf-8");
+			server.use(
+				gqlRouter({
+					Login: () => makeLoginPayload("session-tok"),
+				}),
+				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/open`, ({ request }) => {
+					capturedAuth = request.headers.get("authorization");
+					capturedAccept = request.headers.get("accept");
+					capturedUrl = request.url;
+					return new HttpResponse(pdfBytes, {
+						status: 200,
+						headers: {
+							"Content-Type": "application/pdf",
+							"Content-Disposition": 'attachment; filename="drawer-c-1-open.pdf"',
+						},
+					});
+				}),
+			);
+
+			const client = makeClient();
+			const result = await client.drawers.downloadReceipt({
+				drawerCountId: "c-1",
+				kind: "open",
+			});
+
+			expect(capturedAuth).toBe("session-tok");
+			expect(capturedAccept).toBe("application/pdf");
+			expect(capturedUrl).toBe(`${DASHBOARD_URL}/printing/drawer/c-1/open`);
+			expect(result.contentType).toBe("application/pdf");
+			expect(result.filename).toBe("drawer-c-1-open.pdf");
+			expect(result.data.toString("utf-8")).toBe("%PDF-1.4 test\n");
+		});
+
+		it("retries once on 401 by re-logging in", async () => {
+			let attempts = 0;
+			const tokens = ["tok-stale", "tok-fresh"];
+			let loginCount = 0;
+			server.use(
+				gqlRouter({
+					Login: () => {
+						loginCount++;
+						return makeLoginPayload(tokens.shift() ?? "tok-fresh");
+					},
+				}),
+				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/close`, ({ request }) => {
+					attempts++;
+					const auth = request.headers.get("authorization");
+					if (attempts === 1) {
+						expect(auth).toBe("tok-stale");
+						return new HttpResponse("Unauthorized", { status: 401 });
+					}
+					expect(auth).toBe("tok-fresh");
+					return new HttpResponse(Buffer.from("ok"), { status: 200 });
+				}),
+			);
+
+			const client = makeClient();
+			const result = await client.drawers.downloadReceipt({
+				drawerCountId: "c-1",
+				kind: "close",
+			});
+
+			expect(attempts).toBe(2);
+			expect(loginCount).toBe(2);
+			expect(result.data.toString("utf-8")).toBe("ok");
+		});
+
+		it("propagates non-auth errors without retry", async () => {
+			let attempts = 0;
+			server.use(
+				gqlRouter({ Login: () => makeLoginPayload() }),
+				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/drop/ev-9`, () => {
+					attempts++;
+					return new HttpResponse("Not Found", { status: 404 });
+				}),
+			);
+
+			const client = makeClient();
+			await expect(
+				client.drawers.downloadReceipt({
+					drawerCountId: "c-1",
+					kind: "drop",
+					eventId: "ev-9",
+				}),
+			).rejects.toThrow();
+			expect(attempts).toBe(1);
+		});
+	});
+});
+
 describe("DrawersResource auth retry", () => {
 	it("retries once on FlowhubAuthError by invalidating and re-logging in", async () => {
 		const loginTokens = ["tok-stale", "tok-fresh"];

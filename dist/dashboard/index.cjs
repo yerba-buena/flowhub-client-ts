@@ -79,6 +79,7 @@ var FlowhubValidationError = class extends FlowhubError {
 };
 
 // src/dashboard/cash-management.ts
+var RECEIPT_KINDS_WITH_EVENT = /* @__PURE__ */ new Set(["drop", "pop", "payin", "payout"]);
 var DRAWER_FIELDS = `
 fragment DrawerFields on Drawer {
   id
@@ -570,6 +571,50 @@ var DrawersResource = class {
     );
     return data.makePop;
   }
+  /**
+   * Build the absolute URL for a receipt PDF without making a network
+   * call. Useful for embedding receipt links in a UI, or for printing
+   * via the user's browser instead of going through the SDK.
+   *
+   * `drawerCountId` is `counts.id` (not the drawer's own ID).
+   * `eventId` is the UUID of the drop / pop / payin / payout — required
+   * for those four kinds, omitted for open / close.
+   */
+  buildReceiptUrl(opts) {
+    const { drawerCountId, kind, eventId } = opts;
+    if (RECEIPT_KINDS_WITH_EVENT.has(kind)) {
+      if (!eventId) {
+        throw new FlowhubValidationError(`buildReceiptUrl: ${kind} receipts require an eventId`, {
+          errors: [`Missing eventId for receipt kind "${kind}"`]
+        });
+      }
+      return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}/${eventId}`;
+    }
+    if (eventId !== void 0) {
+      throw new FlowhubValidationError(
+        `buildReceiptUrl: ${kind} receipts must NOT include an eventId`,
+        { errors: [`Unexpected eventId for receipt kind "${kind}"`] }
+      );
+    }
+    return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}`;
+  }
+  /**
+   * Download a receipt PDF for an open / close / drop / pop / payin /
+   * payout event. Returns the bytes and the response headers (filename,
+   * content type). Retries once on 401 just like the other methods.
+   */
+  async downloadReceipt(opts) {
+    const url = this.buildReceiptUrl(opts);
+    const path = url.slice(this.http.baseUrl.length);
+    const result = await this.withAuthRetry(
+      (token) => this.http.downloadBinary(path, {}, token, { accept: "application/pdf" })
+    );
+    return {
+      data: result.data,
+      contentType: result.contentType,
+      filename: result.filename
+    };
+  }
   async withAuthRetry(fn) {
     const tryOnce = async () => {
       const token = await this.auth.getToken();
@@ -589,6 +634,7 @@ var DrawersResource = class {
 
 // src/dashboard/http.ts
 var DashboardHttp = class {
+  /** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
   baseUrl;
   timeout;
   fetchFn;
@@ -626,12 +672,12 @@ var DashboardHttp = class {
     }
     return parsed.data;
   }
-  async downloadBinary(path, query, token) {
+  async downloadBinary(path, query, token, options = {}) {
     const url = this.buildUrl(path, query);
     const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers: {
-        Accept: "application/octet-stream",
+        Accept: options.accept ?? "application/octet-stream",
         Authorization: token,
         Origin: "https://app.flowhub.com"
       }

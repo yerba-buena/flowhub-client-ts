@@ -272,5 +272,23 @@ describe.skipIf(SKIP)("Cash management live integration", () => {
 			expect(last?.reason).toBe(reason);
 			expect(after.counts?.cashBalance).toBe(balanceBefore);
 		});
+
+		it("downloadReceipt returns a PDF for the open receipt", async () => {
+			const client = makeClient();
+			const drawer = await client.drawers.get(drawerId);
+			const drawerCountId = drawer?.counts?.id;
+			if (!drawerCountId) {
+				throw new Error("Expected drawer to have a counts.id while open");
+			}
+
+			const receipt = await client.drawers.downloadReceipt({
+				drawerCountId,
+				kind: "open",
+			});
+
+			expect(receipt.data.length).toBeGreaterThan(0);
+			expect(receipt.contentType).toMatch(/pdf/i);
+			expect(receipt.data.slice(0, 4).toString("ascii")).toBe("%PDF");
+		});
 	});
 });

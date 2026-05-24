@@ -1,4 +1,4 @@
-import { FlowhubAuthError } from "../errors.js";
+import { FlowhubAuthError, FlowhubValidationError } from "../errors.js";
 import type {
 	CashEventParams,
 	CountRecord,
@@ -8,10 +8,14 @@ import type {
 	DrawerTip,
 	ListActivityParams,
 	ListDrawersParams,
+	ReceiptDownload,
+	ReceiptOptions,
 	UpdateDrawerInput,
 } from "./cash-management-types.js";
 import type { DashboardHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
+
+const RECEIPT_KINDS_WITH_EVENT = new Set(["drop", "pop", "payin", "payout"]);
 
 const DRAWER_FIELDS = `
 fragment DrawerFields on Drawer {
@@ -229,13 +233,13 @@ mutation MakePayout($drawerId: String!, $payout: CashEventInput!) {
 
 /**
  * Resource for Flowhub's cash-management surface: drawers, drawer counts,
- * drop / pop / pay-in / pay-out events, the activity feed, and tips.
+ * the drop / pop / pay-in / pay-out events, the audit feed, tips, and
+ * receipt PDFs.
  *
- * Phase 1 (this file) implements the read-only methods. Drawer CRUD,
- * lifecycle (open/close), and cash events come in later phases.
- *
- * All methods retry exactly once on 401 by invalidating the cached token
- * and re-logging in. If the retry also 401s, `FlowhubAuthError` propagates.
+ * All HTTP-bound methods retry exactly once on 401 by invalidating the
+ * cached token and re-logging in. If the retry also 401s,
+ * `FlowhubAuthError` propagates. `buildReceiptUrl` is pure and makes no
+ * network call.
  */
 export class DrawersResource {
 	constructor(
@@ -542,6 +546,53 @@ export class DrawersResource {
 			),
 		);
 		return data.makePop;
+	}
+
+	/**
+	 * Build the absolute URL for a receipt PDF without making a network
+	 * call. Useful for embedding receipt links in a UI, or for printing
+	 * via the user's browser instead of going through the SDK.
+	 *
+	 * `drawerCountId` is `counts.id` (not the drawer's own ID).
+	 * `eventId` is the UUID of the drop / pop / payin / payout — required
+	 * for those four kinds, omitted for open / close.
+	 */
+	buildReceiptUrl(opts: ReceiptOptions): string {
+		const { drawerCountId, kind, eventId } = opts;
+		if (RECEIPT_KINDS_WITH_EVENT.has(kind)) {
+			if (!eventId) {
+				throw new FlowhubValidationError(`buildReceiptUrl: ${kind} receipts require an eventId`, {
+					errors: [`Missing eventId for receipt kind "${kind}"`],
+				});
+			}
+			return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}/${eventId}`;
+		}
+		if (eventId !== undefined) {
+			throw new FlowhubValidationError(
+				`buildReceiptUrl: ${kind} receipts must NOT include an eventId`,
+				{ errors: [`Unexpected eventId for receipt kind "${kind}"`] },
+			);
+		}
+		return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}`;
+	}
+
+	/**
+	 * Download a receipt PDF for an open / close / drop / pop / payin /
+	 * payout event. Returns the bytes and the response headers (filename,
+	 * content type). Retries once on 401 just like the other methods.
+	 */
+	async downloadReceipt(opts: ReceiptOptions): Promise<ReceiptDownload> {
+		const url = this.buildReceiptUrl(opts);
+		const path = url.slice(this.http.baseUrl.length);
+
+		const result = await this.withAuthRetry((token) =>
+			this.http.downloadBinary(path, {}, token, { accept: "application/pdf" }),
+		);
+		return {
+			data: result.data,
+			contentType: result.contentType,
+			filename: result.filename,
+		};
 	}
 
 	private async withAuthRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {

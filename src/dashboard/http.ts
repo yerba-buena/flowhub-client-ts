@@ -35,7 +35,8 @@ export interface GraphQLResponse<T> {
  * want to hammer them.
  */
 export class DashboardHttp {
-	private readonly baseUrl: string;
+	/** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
+	readonly baseUrl: string;
 	private readonly timeout: number;
 	private readonly fetchFn: typeof fetch;
 
@@ -82,12 +83,13 @@ export class DashboardHttp {
 		path: string,
 		query: Record<string, string | number | boolean | undefined>,
 		token: string,
+		options: { accept?: string } = {},
 	): Promise<{ data: Buffer; filename: string | undefined; contentType: string }> {
 		const url = this.buildUrl(path, query);
 		const response = await this.fetchWithTimeout(url, {
 			method: "GET",
 			headers: {
-				Accept: "application/octet-stream",
+				Accept: options.accept ?? "application/octet-stream",
 				Authorization: token,
 				Origin: "https://app.flowhub.com",
 			},

@@ -294,6 +294,23 @@ type DrawerEvent = {
 interface DrawerSource {
     list(params?: ListDrawersParams): Promise<Drawer[]>;
 }
+/**
+ * Receipt kinds correspond to URL path segments on Flowhub's
+ * /printing/drawer endpoint. Note the lowercase `payin` / `payout` —
+ * these match the wire format, not the camelCase DrawerEvent kinds.
+ */
+type ReceiptKind = "open" | "close" | "drop" | "pop" | "payin" | "payout";
+interface ReceiptOptions {
+    readonly drawerCountId: string;
+    readonly kind: ReceiptKind;
+    /** Required for drop / pop / payin / payout. Omitted for open / close. */
+    readonly eventId?: string;
+}
+interface ReceiptDownload {
+    readonly data: Buffer;
+    readonly contentType: string;
+    readonly filename: string | undefined;
+}
 interface DrawerWatcherOptions {
     readonly drawers: DrawerSource;
     /** Poll interval in milliseconds. Default 5000 — matches the dashboard. */
@@ -333,12 +350,15 @@ interface GraphQLRequest {
  * want to hammer them.
  */
 declare class DashboardHttp {
-    private readonly baseUrl;
+    /** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
+    readonly baseUrl: string;
     private readonly timeout;
     private readonly fetchFn;
     constructor(options: DashboardHttpOptions);
     graphql<T>(request: GraphQLRequest, token?: string, path?: string): Promise<T>;
-    downloadBinary(path: string, query: Record<string, string | number | boolean | undefined>, token: string): Promise<{
+    downloadBinary(path: string, query: Record<string, string | number | boolean | undefined>, token: string, options?: {
+        accept?: string;
+    }): Promise<{
         data: Buffer;
         filename: string | undefined;
         contentType: string;
@@ -415,13 +435,13 @@ declare class SessionAuth {
 
 /**
  * Resource for Flowhub's cash-management surface: drawers, drawer counts,
- * drop / pop / pay-in / pay-out events, the activity feed, and tips.
+ * the drop / pop / pay-in / pay-out events, the audit feed, tips, and
+ * receipt PDFs.
  *
- * Phase 1 (this file) implements the read-only methods. Drawer CRUD,
- * lifecycle (open/close), and cash events come in later phases.
- *
- * All methods retry exactly once on 401 by invalidating the cached token
- * and re-logging in. If the retry also 401s, `FlowhubAuthError` propagates.
+ * All HTTP-bound methods retry exactly once on 401 by invalidating the
+ * cached token and re-logging in. If the retry also 401s,
+ * `FlowhubAuthError` propagates. `buildReceiptUrl` is pure and makes no
+ * network call.
  */
 declare class DrawersResource {
     private readonly http;
@@ -514,6 +534,22 @@ declare class DrawersResource {
      * usually 0. Appends to `counts.pops[]`.
      */
     pop(drawerId: string, params: CashEventParams): Promise<Drawer>;
+    /**
+     * Build the absolute URL for a receipt PDF without making a network
+     * call. Useful for embedding receipt links in a UI, or for printing
+     * via the user's browser instead of going through the SDK.
+     *
+     * `drawerCountId` is `counts.id` (not the drawer's own ID).
+     * `eventId` is the UUID of the drop / pop / payin / payout — required
+     * for those four kinds, omitted for open / close.
+     */
+    buildReceiptUrl(opts: ReceiptOptions): string;
+    /**
+     * Download a receipt PDF for an open / close / drop / pop / payin /
+     * payout event. Returns the bytes and the response headers (filename,
+     * content type). Retries once on 401 just like the other methods.
+     */
+    downloadReceipt(opts: ReceiptOptions): Promise<ReceiptDownload>;
     private withAuthRetry;
 }
 
@@ -689,4 +725,4 @@ declare class DrawerWatcher {
  */
 declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };
