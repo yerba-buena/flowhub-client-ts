@@ -1,5 +1,6 @@
 import { FlowhubAuthError } from "../errors.js";
 import type {
+	CountRecord,
 	CreateDrawerInput,
 	Drawer,
 	DrawerActivity,
@@ -166,6 +167,24 @@ const REMOVE_DRAWER_USER_MUTATION = `
 ${DRAWER_FIELDS}
 mutation RemoveDrawerUser($drawerId: String!, $userId: String!) {
   removeDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
+
+const OPEN_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation OpenDrawer($id: String!, $count: CountRecordInput!) {
+  openDrawer(id: $id, count: $count) {
+    ...DrawerFields
+  }
+}
+`;
+
+const CLOSE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CloseDrawer($id: String!, $count: CountRecordInput!) {
+  closeDrawer(id: $id, count: $count) {
     ...DrawerFields
   }
 }
@@ -368,6 +387,46 @@ export class DrawersResource {
 			),
 		);
 		return data.removeDrawerUser;
+	}
+
+	/**
+	 * Open a drawer with an opening count (cash on hand at the start of the
+	 * shift). Sets `counts.openedAt`, `counts.openedByUser`, and
+	 * `counts.openingCounts`. The drawer must currently be closed (or
+	 * not-yet-opened) — opening an already-open drawer is rejected
+	 * server-side.
+	 */
+	async open(id: string, count: CountRecord): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ openDrawer: Drawer }>(
+				{
+					operationName: "OpenDrawer",
+					variables: { id, count },
+					query: OPEN_DRAWER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.openDrawer;
+	}
+
+	/**
+	 * Close a drawer with a closing count. Sets `counts.ClosedAt`
+	 * (server-side capitalisation preserved), `counts.closedByUser`, and
+	 * `counts.closingCounts`. The drawer must currently be open.
+	 */
+	async close(id: string, count: CountRecord): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ closeDrawer: Drawer }>(
+				{
+					operationName: "CloseDrawer",
+					variables: { id, count },
+					query: CLOSE_DRAWER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.closeDrawer;
 	}
 
 	private async withAuthRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {

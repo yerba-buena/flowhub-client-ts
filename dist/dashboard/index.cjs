@@ -228,6 +228,22 @@ mutation RemoveDrawerUser($drawerId: String!, $userId: String!) {
   }
 }
 `;
+var OPEN_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation OpenDrawer($id: String!, $count: CountRecordInput!) {
+  openDrawer(id: $id, count: $count) {
+    ...DrawerFields
+  }
+}
+`;
+var CLOSE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CloseDrawer($id: String!, $count: CountRecordInput!) {
+  closeDrawer(id: $id, count: $count) {
+    ...DrawerFields
+  }
+}
+`;
 var DrawersResource = class {
   constructor(http, auth) {
     this.http = http;
@@ -407,6 +423,44 @@ var DrawersResource = class {
       )
     );
     return data.removeDrawerUser;
+  }
+  /**
+   * Open a drawer with an opening count (cash on hand at the start of the
+   * shift). Sets `counts.openedAt`, `counts.openedByUser`, and
+   * `counts.openingCounts`. The drawer must currently be closed (or
+   * not-yet-opened) — opening an already-open drawer is rejected
+   * server-side.
+   */
+  async open(id, count) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "OpenDrawer",
+          variables: { id, count },
+          query: OPEN_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.openDrawer;
+  }
+  /**
+   * Close a drawer with a closing count. Sets `counts.ClosedAt`
+   * (server-side capitalisation preserved), `counts.closedByUser`, and
+   * `counts.closingCounts`. The drawer must currently be open.
+   */
+  async close(id, count) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "CloseDrawer",
+          variables: { id, count },
+          query: CLOSE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.closeDrawer;
   }
   async withAuthRetry(fn) {
     const tryOnce = async () => {

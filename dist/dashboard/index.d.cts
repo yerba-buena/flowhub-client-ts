@@ -395,6 +395,20 @@ declare class DrawersResource {
     assignUser(drawerId: string, userId: string): Promise<Drawer>;
     /** Remove a user from a drawer. */
     unassignUser(drawerId: string, userId: string): Promise<Drawer>;
+    /**
+     * Open a drawer with an opening count (cash on hand at the start of the
+     * shift). Sets `counts.openedAt`, `counts.openedByUser`, and
+     * `counts.openingCounts`. The drawer must currently be closed (or
+     * not-yet-opened) — opening an already-open drawer is rejected
+     * server-side.
+     */
+    open(id: string, count: CountRecord): Promise<Drawer>;
+    /**
+     * Close a drawer with a closing count. Sets `counts.ClosedAt`
+     * (server-side capitalisation preserved), `counts.closedByUser`, and
+     * `counts.closingCounts`. The drawer must currently be open.
+     */
+    close(id: string, count: CountRecord): Promise<Drawer>;
     private withAuthRetry;
 }
 

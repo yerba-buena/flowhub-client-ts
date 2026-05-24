@@ -491,6 +491,104 @@ describe("DrawersResource user assignment", () => {
 	});
 });
 
+describe("DrawersResource.open", () => {
+	it("calls OpenDrawer with id + count and returns the opened drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		const openingCount = {
+			total: 30000,
+			notes: "Opening shift",
+			denominations: {
+				pennies: 0,
+				nickels: 0,
+				dimes: 0,
+				quarters: 0,
+				ones: 100,
+				twos: 0,
+				fives: 20,
+				tens: 5,
+				twenties: 5,
+				fifties: 0,
+				hundreds: 0,
+			},
+		};
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				OpenDrawer: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							openDrawer: {
+								...SAMPLE_DRAWER,
+								openedAt: "2026-05-24T09:00:00Z",
+							},
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.open("drawer-uuid-1", openingCount);
+
+		expect(capturedVars).toEqual({ id: "drawer-uuid-1", count: openingCount });
+		expect(drawer.openedAt).toBe("2026-05-24T09:00:00Z");
+	});
+});
+
+describe("DrawersResource.close", () => {
+	it("calls CloseDrawer with id + count and returns the closed drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		const closingCount = {
+			total: 35000,
+			notes: "Closing shift",
+			denominations: {
+				pennies: 0,
+				nickels: 0,
+				dimes: 0,
+				quarters: 0,
+				ones: 150,
+				twos: 0,
+				fives: 20,
+				tens: 5,
+				twenties: 5,
+				fifties: 0,
+				hundreds: 0,
+			},
+		};
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				CloseDrawer: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							closeDrawer: {
+								...SAMPLE_DRAWER,
+								closedAt: "2026-05-24T17:00:00Z",
+								counts: {
+									...SAMPLE_DRAWER.counts,
+									ClosedAt: "2026-05-24T17:00:00Z",
+									closingCounts: closingCount,
+									closingCashBalance: 35000,
+								},
+							},
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.close("drawer-uuid-1", closingCount);
+
+		expect(capturedVars).toEqual({ id: "drawer-uuid-1", count: closingCount });
+		expect(drawer.closedAt).toBe("2026-05-24T17:00:00Z");
+		expect(drawer.counts?.ClosedAt).toBe("2026-05-24T17:00:00Z");
+		expect(drawer.counts?.closingCashBalance).toBe(35000);
+	});
+});
+
 describe("DrawersResource auth retry", () => {
 	it("retries once on FlowhubAuthError by invalidating and re-logging in", async () => {
 		const loginTokens = ["tok-stale", "tok-fresh"];
