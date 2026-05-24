@@ -215,6 +215,21 @@ interface ListUsersParams {
     readonly orderBy?: string;
     readonly isInternal?: boolean;
 }
+interface CreateDrawerInput {
+    readonly name: string;
+    readonly type: DrawerType | string;
+    /** Room UUIDs the drawer is scoped to. At least one. */
+    readonly rooms: ReadonlyArray<string>;
+    /** cents */
+    readonly dropTriggerBalance: number;
+}
+interface UpdateDrawerInput {
+    readonly name: string;
+    readonly type: DrawerType | string;
+    readonly rooms: ReadonlyArray<string>;
+    /** cents */
+    readonly dropTriggerBalance: number;
+}
 
 interface DashboardHttpOptions {
     readonly baseUrl: string;
@@ -355,6 +370,31 @@ declare class DrawersResource {
      * and a close). Keyed by `drawerCountId`, NOT the drawer's own ID.
      */
     listTips(drawerCountId: string): Promise<DrawerTip[]>;
+    /**
+     * Create a new drawer. `rooms` is a list of room UUIDs the drawer is
+     * scoped to; `dropTriggerBalance` is in integer cents. Returned drawer
+     * has `openedAt: null` and `counts: null` until `open()` is called.
+     */
+    create(input: CreateDrawerInput): Promise<Drawer>;
+    /**
+     * Update an existing drawer. Fires even on no-op edits — the server
+     * tolerates that. Note: this does NOT manage user assignment; use
+     * `assignUser` / `unassignUser` for that.
+     */
+    update(id: string, input: UpdateDrawerInput): Promise<Drawer>;
+    /**
+     * Delete a drawer. The server returns an empty array on success; this
+     * method normalises that to `void`. The drawer is soft-deleted (hidden)
+     * rather than physically removed.
+     */
+    delete(id: string): Promise<void>;
+    /**
+     * Assign a user to a drawer. Drawer↔user is many-to-many; calling this
+     * with an already-assigned user is a no-op on the server side.
+     */
+    assignUser(drawerId: string, userId: string): Promise<Drawer>;
+    /** Remove a user from a drawer. */
+    unassignUser(drawerId: string, userId: string): Promise<Drawer>;
     private withAuthRetry;
 }
 
@@ -460,4 +500,4 @@ declare class FlowhubDashboardClient {
     forStore(storeId: string): FlowhubDashboardClient;
 }
 
-export { type CashEvent, type CommonReportParams, type CountRecord, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerRoom, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type User, type UserRole, type UserStore, UsersResource };
+export { type CashEvent, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerRoom, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource };

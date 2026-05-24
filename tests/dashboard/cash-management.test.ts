@@ -323,6 +323,174 @@ describe("DrawersResource.listTips", () => {
 	});
 });
 
+describe("DrawersResource.create", () => {
+	it("calls CreateDrawer with the supplied variables and returns the new drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				CreateDrawer: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							createDrawer: {
+								...SAMPLE_DRAWER,
+								id: "new-drawer-uuid",
+								name: "Register 2",
+								openedAt: null,
+								closedAt: null,
+								counts: null,
+							},
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.create({
+			name: "Register 2",
+			type: "REC",
+			rooms: ["room-1", "room-2"],
+			dropTriggerBalance: 100000,
+		});
+
+		expect(capturedVars).toEqual({
+			name: "Register 2",
+			type: "REC",
+			rooms: ["room-1", "room-2"],
+			dropTriggerBalance: 100000,
+		});
+		expect(drawer.id).toBe("new-drawer-uuid");
+		expect(drawer.counts).toBeNull();
+	});
+});
+
+describe("DrawersResource.update", () => {
+	it("calls UpdateDrawer with id + input variables and returns the updated drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				UpdateDrawer: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: {
+							updateDrawer: { ...SAMPLE_DRAWER, name: "Renamed Drawer" },
+						},
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.update("drawer-uuid-1", {
+			name: "Renamed Drawer",
+			type: "REC",
+			rooms: ["room-1"],
+			dropTriggerBalance: 150000,
+		});
+
+		expect(capturedVars).toEqual({
+			id: "drawer-uuid-1",
+			name: "Renamed Drawer",
+			type: "REC",
+			rooms: ["room-1"],
+			dropTriggerBalance: 150000,
+		});
+		expect(drawer.name).toBe("Renamed Drawer");
+	});
+});
+
+describe("DrawersResource.delete", () => {
+	it("calls DeleteDrawer with the id and resolves to void on the empty-array success response", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				DeleteDrawer: ({ variables }) => {
+					capturedVars = variables;
+					return { data: { deleteDrawer: [] } };
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const result = await client.drawers.delete("drawer-uuid-1");
+
+		expect(capturedVars).toEqual({ id: "drawer-uuid-1" });
+		expect(result).toBeUndefined();
+	});
+
+	it("propagates a GraphQL error if the server rejects the delete", async () => {
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				DeleteDrawer: () =>
+					HttpResponse.json({
+						errors: [{ message: "drawer not found" }],
+					}) as Response,
+			}),
+		);
+
+		const client = makeClient();
+		await expect(client.drawers.delete("nope")).rejects.toThrow(/drawer not found/);
+	});
+});
+
+describe("DrawersResource user assignment", () => {
+	it("assignUser calls AddDrawerUser and returns the updated drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		const updated = {
+			...SAMPLE_DRAWER,
+			users: [
+				...SAMPLE_DRAWER.users,
+				{
+					id: "user-2",
+					email: "second@example.com",
+					meta: { firstName: "Sam", lastName: "Second" },
+				},
+			],
+		};
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				AddDrawerUser: ({ variables }) => {
+					capturedVars = variables;
+					return { data: { addDrawerUser: updated } };
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.assignUser("drawer-uuid-1", "user-2");
+
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", userId: "user-2" });
+		expect(drawer.users.map((u) => u.id)).toContain("user-2");
+	});
+
+	it("unassignUser calls RemoveDrawerUser and returns the updated drawer", async () => {
+		let capturedVars: Record<string, unknown> | undefined;
+		server.use(
+			gqlRouter({
+				Login: () => makeLoginPayload(),
+				RemoveDrawerUser: ({ variables }) => {
+					capturedVars = variables;
+					return {
+						data: { removeDrawerUser: { ...SAMPLE_DRAWER, users: [] } },
+					};
+				},
+			}),
+		);
+
+		const client = makeClient();
+		const drawer = await client.drawers.unassignUser("drawer-uuid-1", "user-1");
+
+		expect(capturedVars).toEqual({ drawerId: "drawer-uuid-1", userId: "user-1" });
+		expect(drawer.users).toEqual([]);
+	});
+});
+
 describe("DrawersResource auth retry", () => {
 	it("retries once on FlowhubAuthError by invalidating and re-logging in", async () => {
 		const loginTokens = ["tok-stale", "tok-fresh"];

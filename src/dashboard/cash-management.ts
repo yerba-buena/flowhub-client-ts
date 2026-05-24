@@ -1,10 +1,12 @@
 import { FlowhubAuthError } from "../errors.js";
 import type {
+	CreateDrawerInput,
 	Drawer,
 	DrawerActivity,
 	DrawerTip,
 	ListActivityParams,
 	ListDrawersParams,
+	UpdateDrawerInput,
 } from "./cash-management-types.js";
 import type { DashboardHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
@@ -101,6 +103,70 @@ query GetDrawerTips($drawerCountId: String!) {
   drawerTips(drawerCountId: $drawerCountId) {
     name
     amount
+  }
+}
+`;
+
+const CREATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CreateDrawer(
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  createDrawer(
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+
+const UPDATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation UpdateDrawer(
+  $id: String!
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  updateDrawer(
+    id: $id
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+
+const DELETE_DRAWER_MUTATION = `
+mutation DeleteDrawer($id: String!) {
+  deleteDrawer(id: $id)
+}
+`;
+
+const ADD_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation AddDrawerUser($drawerId: String!, $userId: String!) {
+  addDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
+
+const REMOVE_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation RemoveDrawerUser($drawerId: String!, $userId: String!) {
+  removeDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
   }
 }
 `;
@@ -202,6 +268,106 @@ export class DrawersResource {
 			),
 		);
 		return data.drawerTips;
+	}
+
+	/**
+	 * Create a new drawer. `rooms` is a list of room UUIDs the drawer is
+	 * scoped to; `dropTriggerBalance` is in integer cents. Returned drawer
+	 * has `openedAt: null` and `counts: null` until `open()` is called.
+	 */
+	async create(input: CreateDrawerInput): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ createDrawer: Drawer }>(
+				{
+					operationName: "CreateDrawer",
+					variables: {
+						name: input.name,
+						type: input.type,
+						rooms: input.rooms,
+						dropTriggerBalance: input.dropTriggerBalance,
+					},
+					query: CREATE_DRAWER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.createDrawer;
+	}
+
+	/**
+	 * Update an existing drawer. Fires even on no-op edits — the server
+	 * tolerates that. Note: this does NOT manage user assignment; use
+	 * `assignUser` / `unassignUser` for that.
+	 */
+	async update(id: string, input: UpdateDrawerInput): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ updateDrawer: Drawer }>(
+				{
+					operationName: "UpdateDrawer",
+					variables: {
+						id,
+						name: input.name,
+						type: input.type,
+						rooms: input.rooms,
+						dropTriggerBalance: input.dropTriggerBalance,
+					},
+					query: UPDATE_DRAWER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.updateDrawer;
+	}
+
+	/**
+	 * Delete a drawer. The server returns an empty array on success; this
+	 * method normalises that to `void`. The drawer is soft-deleted (hidden)
+	 * rather than physically removed.
+	 */
+	async delete(id: string): Promise<void> {
+		await this.withAuthRetry((token) =>
+			this.http.graphql<{ deleteDrawer: unknown }>(
+				{
+					operationName: "DeleteDrawer",
+					variables: { id },
+					query: DELETE_DRAWER_MUTATION,
+				},
+				token,
+			),
+		);
+	}
+
+	/**
+	 * Assign a user to a drawer. Drawer↔user is many-to-many; calling this
+	 * with an already-assigned user is a no-op on the server side.
+	 */
+	async assignUser(drawerId: string, userId: string): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ addDrawerUser: Drawer }>(
+				{
+					operationName: "AddDrawerUser",
+					variables: { drawerId, userId },
+					query: ADD_DRAWER_USER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.addDrawerUser;
+	}
+
+	/** Remove a user from a drawer. */
+	async unassignUser(drawerId: string, userId: string): Promise<Drawer> {
+		const data = await this.withAuthRetry((token) =>
+			this.http.graphql<{ removeDrawerUser: Drawer }>(
+				{
+					operationName: "RemoveDrawerUser",
+					variables: { drawerId, userId },
+					query: REMOVE_DRAWER_USER_MUTATION,
+				},
+				token,
+			),
+		);
+		return data.removeDrawerUser;
 	}
 
 	private async withAuthRetry<T>(fn: (token: string) => Promise<T>): Promise<T> {

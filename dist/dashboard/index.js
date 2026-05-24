@@ -134,6 +134,65 @@ query GetDrawerTips($drawerCountId: String!) {
   }
 }
 `;
+var CREATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CreateDrawer(
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  createDrawer(
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+var UPDATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation UpdateDrawer(
+  $id: String!
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  updateDrawer(
+    id: $id
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+var DELETE_DRAWER_MUTATION = `
+mutation DeleteDrawer($id: String!) {
+  deleteDrawer(id: $id)
+}
+`;
+var ADD_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation AddDrawerUser($drawerId: String!, $userId: String!) {
+  addDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
+var REMOVE_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation RemoveDrawerUser($drawerId: String!, $userId: String!) {
+  removeDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
 var DrawersResource = class {
   constructor(http, auth) {
     this.http = http;
@@ -218,6 +277,101 @@ var DrawersResource = class {
       )
     );
     return data.drawerTips;
+  }
+  /**
+   * Create a new drawer. `rooms` is a list of room UUIDs the drawer is
+   * scoped to; `dropTriggerBalance` is in integer cents. Returned drawer
+   * has `openedAt: null` and `counts: null` until `open()` is called.
+   */
+  async create(input) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "CreateDrawer",
+          variables: {
+            name: input.name,
+            type: input.type,
+            rooms: input.rooms,
+            dropTriggerBalance: input.dropTriggerBalance
+          },
+          query: CREATE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.createDrawer;
+  }
+  /**
+   * Update an existing drawer. Fires even on no-op edits — the server
+   * tolerates that. Note: this does NOT manage user assignment; use
+   * `assignUser` / `unassignUser` for that.
+   */
+  async update(id, input) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "UpdateDrawer",
+          variables: {
+            id,
+            name: input.name,
+            type: input.type,
+            rooms: input.rooms,
+            dropTriggerBalance: input.dropTriggerBalance
+          },
+          query: UPDATE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.updateDrawer;
+  }
+  /**
+   * Delete a drawer. The server returns an empty array on success; this
+   * method normalises that to `void`. The drawer is soft-deleted (hidden)
+   * rather than physically removed.
+   */
+  async delete(id) {
+    await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "DeleteDrawer",
+          variables: { id },
+          query: DELETE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+  }
+  /**
+   * Assign a user to a drawer. Drawer↔user is many-to-many; calling this
+   * with an already-assigned user is a no-op on the server side.
+   */
+  async assignUser(drawerId, userId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "AddDrawerUser",
+          variables: { drawerId, userId },
+          query: ADD_DRAWER_USER_MUTATION
+        },
+        token
+      )
+    );
+    return data.addDrawerUser;
+  }
+  /** Remove a user from a drawer. */
+  async unassignUser(drawerId, userId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "RemoveDrawerUser",
+          variables: { drawerId, userId },
+          query: REMOVE_DRAWER_USER_MUTATION
+        },
+        token
+      )
+    );
+    return data.removeDrawerUser;
   }
   async withAuthRetry(fn) {
     const tryOnce = async () => {

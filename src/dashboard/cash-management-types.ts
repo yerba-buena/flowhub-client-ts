@@ -234,3 +234,20 @@ export interface ListUsersParams {
 	readonly orderBy?: string;
 	readonly isInternal?: boolean;
 }
+
+export interface CreateDrawerInput {
+	readonly name: string;
+	readonly type: DrawerType | string;
+	/** Room UUIDs the drawer is scoped to. At least one. */
+	readonly rooms: ReadonlyArray<string>;
+	/** cents */
+	readonly dropTriggerBalance: number;
+}
+
+export interface UpdateDrawerInput {
+	readonly name: string;
+	readonly type: DrawerType | string;
+	readonly rooms: ReadonlyArray<string>;
+	/** cents */
+	readonly dropTriggerBalance: number;
+}
