@@ -16,11 +16,14 @@ export type {
 	DrawerActivityChanges,
 	DrawerActivityUsersChange,
 	DrawerCounts,
+	DrawerEvent,
 	DrawerRoom,
+	DrawerSource,
 	DrawerTip,
 	DrawerType,
 	DrawerUser,
 	DrawerUserMeta,
+	DrawerWatcherOptions,
 	ListActivityParams,
 	ListDrawersParams,
 	ListUsersParams,
@@ -30,6 +33,7 @@ export type {
 	UserRole,
 	UserStore,
 } from "./cash-management-types.js";
+export { DrawerWatcher, computeEvents } from "./drawer-watcher.js";
 export { RoomsResource } from "./rooms.js";
 export type {
 	CommonReportParams,

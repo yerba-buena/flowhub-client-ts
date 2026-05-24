@@ -264,3 +264,44 @@ export interface CashEventParams {
 	/** UUID of the user performing the action. */
 	readonly userId: string;
 }
+
+/**
+ * Discriminated union of every event the watcher can emit. Switch on
+ * `kind` for exhaustive handling — TypeScript will flag missed cases.
+ */
+export type DrawerEvent =
+	| { readonly kind: "drawer.created"; readonly drawer: Drawer }
+	| { readonly kind: "drawer.deleted"; readonly drawerId: string }
+	| { readonly kind: "drawer.opened"; readonly drawer: Drawer }
+	| { readonly kind: "drawer.closed"; readonly drawer: Drawer }
+	| { readonly kind: "drawer.updated"; readonly drawer: Drawer; readonly previous: Drawer }
+	| { readonly kind: "user.assigned"; readonly drawer: Drawer; readonly user: DrawerUser }
+	| { readonly kind: "user.unassigned"; readonly drawer: Drawer; readonly user: DrawerUser }
+	| { readonly kind: "cash.payIn"; readonly drawer: Drawer; readonly event: CashEvent }
+	| { readonly kind: "cash.payOut"; readonly drawer: Drawer; readonly event: CashEvent }
+	| { readonly kind: "cash.drop"; readonly drawer: Drawer; readonly event: CashEvent }
+	| { readonly kind: "cash.pop"; readonly drawer: Drawer; readonly event: CashEvent };
+
+/**
+ * Minimal contract the watcher needs from its drawer source. `DrawersResource`
+ * satisfies this; tests can pass a fake.
+ */
+export interface DrawerSource {
+	list(params?: ListDrawersParams): Promise<Drawer[]>;
+}
+
+export interface DrawerWatcherOptions {
+	readonly drawers: DrawerSource;
+	/** Poll interval in milliseconds. Default 5000 — matches the dashboard. */
+	readonly intervalMs?: number;
+	/** If set, only drawers with these IDs are watched. */
+	readonly drawerIds?: ReadonlyArray<string>;
+	/**
+	 * If `true`, emit `drawer.created` for every drawer in the initial
+	 * snapshot. If `false` (default), the initial snapshot is baseline-only
+	 * and the first events come from the second poll's diff.
+	 */
+	readonly emitInitial?: boolean;
+	/** Called for transient errors during polling; the watcher continues. */
+	readonly onError?: (err: Error) => void;
+}

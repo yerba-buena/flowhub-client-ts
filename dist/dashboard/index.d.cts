@@ -242,6 +242,73 @@ interface CashEventParams {
     /** UUID of the user performing the action. */
     readonly userId: string;
 }
+/**
+ * Discriminated union of every event the watcher can emit. Switch on
+ * `kind` for exhaustive handling — TypeScript will flag missed cases.
+ */
+type DrawerEvent = {
+    readonly kind: "drawer.created";
+    readonly drawer: Drawer;
+} | {
+    readonly kind: "drawer.deleted";
+    readonly drawerId: string;
+} | {
+    readonly kind: "drawer.opened";
+    readonly drawer: Drawer;
+} | {
+    readonly kind: "drawer.closed";
+    readonly drawer: Drawer;
+} | {
+    readonly kind: "drawer.updated";
+    readonly drawer: Drawer;
+    readonly previous: Drawer;
+} | {
+    readonly kind: "user.assigned";
+    readonly drawer: Drawer;
+    readonly user: DrawerUser;
+} | {
+    readonly kind: "user.unassigned";
+    readonly drawer: Drawer;
+    readonly user: DrawerUser;
+} | {
+    readonly kind: "cash.payIn";
+    readonly drawer: Drawer;
+    readonly event: CashEvent;
+} | {
+    readonly kind: "cash.payOut";
+    readonly drawer: Drawer;
+    readonly event: CashEvent;
+} | {
+    readonly kind: "cash.drop";
+    readonly drawer: Drawer;
+    readonly event: CashEvent;
+} | {
+    readonly kind: "cash.pop";
+    readonly drawer: Drawer;
+    readonly event: CashEvent;
+};
+/**
+ * Minimal contract the watcher needs from its drawer source. `DrawersResource`
+ * satisfies this; tests can pass a fake.
+ */
+interface DrawerSource {
+    list(params?: ListDrawersParams): Promise<Drawer[]>;
+}
+interface DrawerWatcherOptions {
+    readonly drawers: DrawerSource;
+    /** Poll interval in milliseconds. Default 5000 — matches the dashboard. */
+    readonly intervalMs?: number;
+    /** If set, only drawers with these IDs are watched. */
+    readonly drawerIds?: ReadonlyArray<string>;
+    /**
+     * If `true`, emit `drawer.created` for every drawer in the initial
+     * snapshot. If `false` (default), the initial snapshot is baseline-only
+     * and the first events come from the second poll's diff.
+     */
+    readonly emitInitial?: boolean;
+    /** Called for transient errors during polling; the watcher continues. */
+    readonly onError?: (err: Error) => void;
+}
 
 interface DashboardHttpOptions {
     readonly baseUrl: string;
@@ -552,4 +619,74 @@ declare class FlowhubDashboardClient {
     forStore(storeId: string): FlowhubDashboardClient;
 }
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerRoom, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource };
+/**
+ * Polls `DrawersResource.list()` on a fixed cadence, diffs each snapshot
+ * against the previous one, and yields a stream of typed events as an
+ * `AsyncIterable<DrawerEvent>`.
+ *
+ * Usage:
+ * ```ts
+ * const watcher = new DrawerWatcher({ drawers: client.drawers });
+ * for await (const event of watcher.events()) {
+ *   switch (event.kind) {
+ *     case "cash.payIn": // ...
+ *     case "drawer.opened": // ...
+ *   }
+ * }
+ * ```
+ *
+ * The iterator yields one event at a time; polling waits for the consumer
+ * to pull each event before producing more, so a slow handler back-pressures
+ * the watcher rather than queuing events in memory.
+ *
+ * Stop the watcher by calling `stop()` or by `break`ing out of the
+ * `for await` loop (the iterator's `return()` method calls `stop()`).
+ *
+ * The diff treats the very first snapshot as a baseline and emits nothing
+ * for it by default. Pass `emitInitial: true` to emit `drawer.created` for
+ * every drawer in the initial snapshot.
+ */
+declare class DrawerWatcher {
+    private readonly opts;
+    private readonly intervalMs;
+    private readonly filterIds;
+    private previous;
+    private hasBaseline;
+    private stopped;
+    private sleepAbort;
+    constructor(opts: DrawerWatcherOptions);
+    /**
+     * Pre-fetch the baseline snapshot. Optional — if not called, the
+     * generator does it on first iteration. Useful when you want to align
+     * the baseline to a specific moment (e.g. right after a manual setup
+     * step) and then start iterating later.
+     */
+    start(): Promise<void>;
+    /**
+     * Halt polling. The active iterator will yield `done: true` on its
+     * next pull. Idempotent.
+     */
+    stop(): Promise<void>;
+    events(): AsyncIterable<DrawerEvent>;
+    private run;
+    private fetchFiltered;
+    private sleep;
+}
+/**
+ * Pure function — exported for unit testing. Diffs two drawer snapshots
+ * (the previous keyed by id, the next as a list) and returns the events
+ * that fire as a result of the transition.
+ *
+ * Event order within a single diff:
+ *   1. drawer.deleted   (drawers gone from the new snapshot)
+ *   2. drawer.created   (drawers new in the snapshot)
+ *   3. Per-drawer in iteration order:
+ *      a. drawer.updated  (name/type/dropTriggerBalance/rooms change)
+ *      b. drawer.opened   (openedAt: null → set)
+ *      c. drawer.closed   (closedAt: null → set)
+ *      d. user.assigned / user.unassigned
+ *      e. cash.* in array order (server returns them chronologically)
+ */
+declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
+
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_DASHBOARD_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, FlowhubDashboardClient, type FlowhubDashboardClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };

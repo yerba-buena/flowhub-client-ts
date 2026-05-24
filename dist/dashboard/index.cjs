@@ -21,6 +21,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var dashboard_exports = {};
 __export(dashboard_exports, {
   DEFAULT_DASHBOARD_BASE_URL: () => DEFAULT_DASHBOARD_BASE_URL,
+  DrawerWatcher: () => DrawerWatcher,
   DrawersResource: () => DrawersResource,
   FlowhubAuthError: () => FlowhubAuthError,
   FlowhubDashboardClient: () => FlowhubDashboardClient,
@@ -29,7 +30,8 @@ __export(dashboard_exports, {
   FlowhubRateLimitError: () => FlowhubRateLimitError,
   FlowhubValidationError: () => FlowhubValidationError,
   RoomsResource: () => RoomsResource,
-  UsersResource: () => UsersResource
+  UsersResource: () => UsersResource,
+  computeEvents: () => computeEvents
 });
 module.exports = __toCommonJS(dashboard_exports);
 
@@ -1062,9 +1064,180 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
     return new _FlowhubDashboardClient({ ...this.config, storeId });
   }
 };
+
+// src/dashboard/drawer-watcher.ts
+var DEFAULT_INTERVAL_MS = 5e3;
+var DrawerWatcher = class {
+  opts;
+  intervalMs;
+  filterIds;
+  previous = /* @__PURE__ */ new Map();
+  hasBaseline = false;
+  stopped = false;
+  sleepAbort;
+  constructor(opts) {
+    this.opts = opts;
+    this.intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.filterIds = opts.drawerIds ? new Set(opts.drawerIds) : null;
+  }
+  /**
+   * Pre-fetch the baseline snapshot. Optional — if not called, the
+   * generator does it on first iteration. Useful when you want to align
+   * the baseline to a specific moment (e.g. right after a manual setup
+   * step) and then start iterating later.
+   */
+  async start() {
+    if (this.hasBaseline) return;
+    const drawers = await this.fetchFiltered();
+    this.previous = new Map(drawers.map((d) => [d.id, d]));
+    this.hasBaseline = true;
+  }
+  /**
+   * Halt polling. The active iterator will yield `done: true` on its
+   * next pull. Idempotent.
+   */
+  async stop() {
+    this.stopped = true;
+    this.sleepAbort?.abort();
+  }
+  events() {
+    const generator = this.run();
+    const self = this;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => generator.next(),
+          return: async () => {
+            await self.stop();
+            return generator.return(void 0);
+          },
+          throw: (err) => generator.throw(err)
+        };
+      }
+    };
+  }
+  async *run() {
+    if (!this.hasBaseline) {
+      try {
+        const drawers = await this.fetchFiltered();
+        if (this.opts.emitInitial) {
+          for (const d of drawers) {
+            yield { kind: "drawer.created", drawer: d };
+            if (this.stopped) return;
+          }
+        }
+        this.previous = new Map(drawers.map((d) => [d.id, d]));
+        this.hasBaseline = true;
+      } catch (err) {
+        this.opts.onError?.(err);
+      }
+    }
+    while (!this.stopped) {
+      await this.sleep(this.intervalMs);
+      if (this.stopped) return;
+      try {
+        const drawers = await this.fetchFiltered();
+        const events = computeEvents(this.previous, drawers);
+        this.previous = new Map(drawers.map((d) => [d.id, d]));
+        for (const event of events) {
+          yield event;
+          if (this.stopped) return;
+        }
+      } catch (err) {
+        this.opts.onError?.(err);
+      }
+    }
+  }
+  async fetchFiltered() {
+    const drawers = await this.opts.drawers.list({ hidden: false });
+    if (this.filterIds) {
+      const f = this.filterIds;
+      return drawers.filter((d) => f.has(d.id));
+    }
+    return drawers;
+  }
+  async sleep(ms) {
+    if (ms <= 0) return;
+    const abort = new AbortController();
+    this.sleepAbort = abort;
+    try {
+      await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(), ms);
+        abort.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    } finally {
+      this.sleepAbort = void 0;
+    }
+  }
+};
+var CASH_FIELDS = [
+  ["payins", "cash.payIn"],
+  ["payouts", "cash.payOut"],
+  ["drops", "cash.drop"],
+  ["pops", "cash.pop"]
+];
+function computeEvents(prev, nextList) {
+  const events = [];
+  const nextMap = new Map(nextList.map((d) => [d.id, d]));
+  for (const [id] of prev) {
+    if (!nextMap.has(id)) {
+      events.push({ kind: "drawer.deleted", drawerId: id });
+    }
+  }
+  for (const drawer of nextList) {
+    const previous = prev.get(drawer.id);
+    if (!previous) {
+      events.push({ kind: "drawer.created", drawer });
+      continue;
+    }
+    if (previous.name !== drawer.name || previous.type !== drawer.type || previous.dropTriggerBalance !== drawer.dropTriggerBalance || !sameIdSet(previous.rooms, drawer.rooms)) {
+      events.push({ kind: "drawer.updated", drawer, previous });
+    }
+    if (previous.openedAt == null && drawer.openedAt != null) {
+      events.push({ kind: "drawer.opened", drawer });
+    }
+    if (previous.closedAt == null && drawer.closedAt != null) {
+      events.push({ kind: "drawer.closed", drawer });
+    }
+    const prevUserIds = new Set(previous.users.map((u) => u.id));
+    const nextUserIds = new Set(drawer.users.map((u) => u.id));
+    for (const u of drawer.users) {
+      if (!prevUserIds.has(u.id)) {
+        events.push({ kind: "user.assigned", drawer, user: u });
+      }
+    }
+    for (const u of previous.users) {
+      if (!nextUserIds.has(u.id)) {
+        events.push({ kind: "user.unassigned", drawer, user: u });
+      }
+    }
+    for (const [field, kind] of CASH_FIELDS) {
+      const prevIds = new Set((previous.counts?.[field] ?? []).map((e) => e.id));
+      const nextEvents = drawer.counts?.[field] ?? [];
+      for (const event of nextEvents) {
+        if (!prevIds.has(event.id)) {
+          events.push({ kind, drawer, event });
+        }
+      }
+    }
+  }
+  return events;
+}
+function sameIdSet(a, b) {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a.map((x) => x.id));
+  for (const x of b) {
+    if (!setA.has(x.id)) return false;
+  }
+  return true;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_DASHBOARD_BASE_URL,
+  DrawerWatcher,
   DrawersResource,
   FlowhubAuthError,
   FlowhubDashboardClient,
@@ -1073,6 +1246,7 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
   FlowhubRateLimitError,
   FlowhubValidationError,
   RoomsResource,
-  UsersResource
+  UsersResource,
+  computeEvents
 });
 //# sourceMappingURL=index.cjs.map
