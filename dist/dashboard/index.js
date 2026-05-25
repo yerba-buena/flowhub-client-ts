@@ -41,8 +41,563 @@ var FlowhubValidationError = class extends FlowhubError {
   }
 };
 
+// src/dashboard/cash-management.ts
+var RECEIPT_KINDS_WITH_EVENT = /* @__PURE__ */ new Set(["drop", "pop", "payin", "payout"]);
+var DRAWER_FIELDS = `
+fragment DrawerFields on Drawer {
+  id
+  name
+  type
+  openedAt
+  closedAt
+  dropTriggerBalance
+  needsDrop
+  rooms { id name }
+  users { id email meta { firstName lastName } }
+  counts {
+    id
+    drawerId
+    openedAt
+    openedByUser { id email meta { firstName lastName } }
+    ClosedAt
+    closedByUser { id email meta { firstName lastName } }
+    openingCashBalance
+    cashBalance
+    closingCashBalance
+    openingCounts {
+      total
+      notes
+      denominations {
+        pennies nickels dimes quarters
+        ones twos fives tens twenties fifties hundreds
+      }
+    }
+    closingCounts {
+      total
+      notes
+      denominations {
+        pennies nickels dimes quarters
+        ones twos fives tens twenties fifties hundreds
+      }
+    }
+    cashRevenue
+    debitRevenue
+    achRevenue
+    giftCardRevenue
+    debitBalance
+    achBalance
+    debitTipRevenue
+    closingDebitBalance
+    closingRevenue
+    payins  { id total reason timestamp user_id balance_before balance_after }
+    payouts { id total reason timestamp user_id balance_before balance_after }
+    drops   { id total reason timestamp user_id balance_before balance_after }
+    pops    { id total reason timestamp user_id balance_before balance_after }
+    totalPaidIn
+    totalPaidOut
+    totalDropped
+    totalRevenueSinceOpen
+  }
+}
+`;
+var GET_DRAWERS_QUERY = `
+${DRAWER_FIELDS}
+query GetDrawers($id: String, $hidden: Boolean, $orderBy: String, $orderDirection: String) {
+  drawers(id: $id, hidden: $hidden, orderBy: $orderBy, orderDirection: $orderDirection) {
+    ...DrawerFields
+  }
+}
+`;
+var GET_DRAWER_ACTIVITIES_QUERY = `
+${DRAWER_FIELDS}
+query GetDrawerActivities($id: String!, $startDate: String!, $endDate: String!) {
+  drawerActivities(id: $id, startDate: $startDate, endDate: $endDate) {
+    actionTimestamp
+    action
+    subaction
+    employeeName
+    snapshot { ...DrawerFields }
+    changedValues {
+      name        { to from }
+      type        { to from }
+      dropTriggerBalance { to from }
+      rooms       { to { id name } from { id name } }
+      users       { to { id email meta { firstName lastName } } from { id email meta { firstName lastName } } }
+    }
+  }
+}
+`;
+var GET_DRAWER_TIPS_QUERY = `
+query GetDrawerTips($drawerCountId: String!) {
+  drawerTips(drawerCountId: $drawerCountId) {
+    name
+    amount
+  }
+}
+`;
+var CREATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CreateDrawer(
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  createDrawer(
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+var UPDATE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation UpdateDrawer(
+  $id: String!
+  $name: String!
+  $type: String!
+  $rooms: [String!]!
+  $dropTriggerBalance: Int!
+) {
+  updateDrawer(
+    id: $id
+    name: $name
+    type: $type
+    rooms: $rooms
+    dropTriggerBalance: $dropTriggerBalance
+  ) {
+    ...DrawerFields
+  }
+}
+`;
+var DELETE_DRAWER_MUTATION = `
+mutation DeleteDrawer($id: String!) {
+  deleteDrawer(id: $id)
+}
+`;
+var ADD_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation AddDrawerUser($drawerId: String!, $userId: String!) {
+  addDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
+var REMOVE_DRAWER_USER_MUTATION = `
+${DRAWER_FIELDS}
+mutation RemoveDrawerUser($drawerId: String!, $userId: String!) {
+  removeDrawerUser(drawerId: $drawerId, userId: $userId) {
+    ...DrawerFields
+  }
+}
+`;
+var OPEN_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation OpenDrawer($id: String!, $count: CountRecordInput!) {
+  openDrawer(id: $id, count: $count) {
+    ...DrawerFields
+  }
+}
+`;
+var CLOSE_DRAWER_MUTATION = `
+${DRAWER_FIELDS}
+mutation CloseDrawer($id: String!, $count: CountRecordInput!) {
+  closeDrawer(id: $id, count: $count) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_DROP_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakeDrop($drawerId: String!, $drop: CashEventInput!) {
+  makeDrop(drawerId: $drawerId, drop: $drop) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_POP_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePop($drawerId: String!, $pop: CashEventInput!) {
+  makePop(drawerId: $drawerId, pop: $pop) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_PAYIN_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePayin($drawerId: String!, $payin: CashEventInput!) {
+  makePayin(drawerId: $drawerId, payin: $payin) {
+    ...DrawerFields
+  }
+}
+`;
+var MAKE_PAYOUT_MUTATION = `
+${DRAWER_FIELDS}
+mutation MakePayout($drawerId: String!, $payout: CashEventInput!) {
+  makePayout(drawerId: $drawerId, payout: $payout) {
+    ...DrawerFields
+  }
+}
+`;
+var DrawersResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  /**
+   * List drawers. With no params, returns all drawers. Pass `hidden: false`
+   * to exclude soft-deleted drawers (matches what the dashboard's drawers
+   * page polls every ~5 seconds).
+   */
+  async list(params = {}) {
+    const variables = {};
+    if (params.hidden !== void 0) variables.hidden = params.hidden;
+    if (params.orderBy !== void 0) variables.orderBy = params.orderBy;
+    if (params.orderDirection !== void 0) variables.orderDirection = params.orderDirection;
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawers",
+          variables,
+          query: GET_DRAWERS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawers;
+  }
+  /**
+   * Fetch a single drawer by ID. Returns `null` if the server returns an
+   * empty list (the drawer doesn't exist or is hidden).
+   */
+  async get(id) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawers",
+          variables: { id },
+          query: GET_DRAWERS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawers[0] ?? null;
+  }
+  /**
+   * Audit feed for a single drawer over a date range. Includes create /
+   * update / open / close / drop / pop / payin / payout events with the
+   * full drawer snapshot at each point.
+   */
+  async listActivity(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawerActivities",
+          variables: {
+            id: drawerId,
+            startDate: params.startDate,
+            endDate: params.endDate
+          },
+          query: GET_DRAWER_ACTIVITIES_QUERY
+        },
+        token
+      )
+    );
+    return data.drawerActivities;
+  }
+  /**
+   * Tip totals associated with a particular drawer count (between an open
+   * and a close). Keyed by `drawerCountId`, NOT the drawer's own ID.
+   */
+  async listTips(drawerCountId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetDrawerTips",
+          variables: { drawerCountId },
+          query: GET_DRAWER_TIPS_QUERY
+        },
+        token
+      )
+    );
+    return data.drawerTips;
+  }
+  /**
+   * Create a new drawer. `rooms` is a list of room UUIDs the drawer is
+   * scoped to; `dropTriggerBalance` is in integer cents. Returned drawer
+   * has `openedAt: null` and `counts: null` until `open()` is called.
+   */
+  async create(input) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "CreateDrawer",
+          variables: {
+            name: input.name,
+            type: input.type,
+            rooms: input.rooms,
+            dropTriggerBalance: input.dropTriggerBalance
+          },
+          query: CREATE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.createDrawer;
+  }
+  /**
+   * Update an existing drawer. Fires even on no-op edits — the server
+   * tolerates that. Note: this does NOT manage user assignment; use
+   * `assignUser` / `unassignUser` for that.
+   */
+  async update(id, input) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "UpdateDrawer",
+          variables: {
+            id,
+            name: input.name,
+            type: input.type,
+            rooms: input.rooms,
+            dropTriggerBalance: input.dropTriggerBalance
+          },
+          query: UPDATE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.updateDrawer;
+  }
+  /**
+   * Delete a drawer. The server returns an empty array on success; this
+   * method normalises that to `void`. The drawer is soft-deleted (hidden)
+   * rather than physically removed.
+   */
+  async delete(id) {
+    await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "DeleteDrawer",
+          variables: { id },
+          query: DELETE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+  }
+  /**
+   * Assign a user to a drawer. Drawer↔user is many-to-many; calling this
+   * with an already-assigned user is a no-op on the server side.
+   */
+  async assignUser(drawerId, userId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "AddDrawerUser",
+          variables: { drawerId, userId },
+          query: ADD_DRAWER_USER_MUTATION
+        },
+        token
+      )
+    );
+    return data.addDrawerUser;
+  }
+  /** Remove a user from a drawer. */
+  async unassignUser(drawerId, userId) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "RemoveDrawerUser",
+          variables: { drawerId, userId },
+          query: REMOVE_DRAWER_USER_MUTATION
+        },
+        token
+      )
+    );
+    return data.removeDrawerUser;
+  }
+  /**
+   * Open a drawer with an opening count (cash on hand at the start of the
+   * shift). Sets `counts.openedAt`, `counts.openedByUser`, and
+   * `counts.openingCounts`. The drawer must currently be closed (or
+   * not-yet-opened) — opening an already-open drawer is rejected
+   * server-side.
+   */
+  async open(id, count) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "OpenDrawer",
+          variables: { id, count },
+          query: OPEN_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.openDrawer;
+  }
+  /**
+   * Close a drawer with a closing count. Sets `counts.ClosedAt`
+   * (server-side capitalisation preserved), `counts.closedByUser`, and
+   * `counts.closingCounts`. The drawer must currently be open.
+   */
+  async close(id, count) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "CloseDrawer",
+          variables: { id, count },
+          query: CLOSE_DRAWER_MUTATION
+        },
+        token
+      )
+    );
+    return data.closeDrawer;
+  }
+  /**
+   * Pay-in: cash added to the drawer from outside normal sales (e.g.
+   * replenishing change from another register). Effect: `cashBalance +=
+   * total`, `cashRevenue` unchanged. Appends to `counts.payins[]`.
+   */
+  async payIn(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePayin",
+          variables: { drawerId, payin: params },
+          query: MAKE_PAYIN_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePayin;
+  }
+  /**
+   * Pay-out: cash removed from the drawer to pay something/someone that
+   * isn't a deposit (vendor, tip-out, supplies). Effect: `cashBalance -=
+   * total`, `cashRevenue -= total` (recorded as negative revenue).
+   * Appends to `counts.payouts[]`.
+   */
+  async payOut(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePayout",
+          variables: { drawerId, payout: params },
+          query: MAKE_PAYOUT_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePayout;
+  }
+  /**
+   * Drop: cash removed from the drawer for deposit (to safe / bank).
+   * Effect: `cashBalance -= total`, `cashRevenue` unchanged. Appends to
+   * `counts.drops[]`. Triggered manually or in response to `needsDrop`
+   * flipping true when `cashBalance` exceeds `dropTriggerBalance`.
+   */
+  async drop(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakeDrop",
+          variables: { drawerId, drop: params },
+          query: MAKE_DROP_MUTATION
+        },
+        token
+      )
+    );
+    return data.makeDrop;
+  }
+  /**
+   * Pop: open the drawer with no cash change — equivalent to a "No Sale"
+   * button on a traditional register. Audit-trail only. `total` is
+   * usually 0. Appends to `counts.pops[]`.
+   */
+  async pop(drawerId, params) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "MakePop",
+          variables: { drawerId, pop: params },
+          query: MAKE_POP_MUTATION
+        },
+        token
+      )
+    );
+    return data.makePop;
+  }
+  /**
+   * Build the absolute URL for a receipt PDF without making a network
+   * call. Useful for embedding receipt links in a UI, or for printing
+   * via the user's browser instead of going through the SDK.
+   *
+   * `drawerCountId` is `counts.id` (not the drawer's own ID).
+   * `eventId` is the UUID of the drop / pop / payin / payout — required
+   * for those four kinds, omitted for open / close.
+   */
+  buildReceiptUrl(opts) {
+    const { drawerCountId, kind, eventId } = opts;
+    if (RECEIPT_KINDS_WITH_EVENT.has(kind)) {
+      if (!eventId) {
+        throw new FlowhubValidationError(`buildReceiptUrl: ${kind} receipts require an eventId`, {
+          errors: [`Missing eventId for receipt kind "${kind}"`]
+        });
+      }
+      return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}/${eventId}`;
+    }
+    if (eventId !== void 0) {
+      throw new FlowhubValidationError(
+        `buildReceiptUrl: ${kind} receipts must NOT include an eventId`,
+        { errors: [`Unexpected eventId for receipt kind "${kind}"`] }
+      );
+    }
+    return `${this.http.baseUrl}/printing/drawer/${drawerCountId}/${kind}`;
+  }
+  /**
+   * Download a receipt PDF for an open / close / drop / pop / payin /
+   * payout event. Returns the bytes and the response headers (filename,
+   * content type). Retries once on 401 just like the other methods.
+   */
+  async downloadReceipt(opts) {
+    const url = this.buildReceiptUrl(opts);
+    const path = url.slice(this.http.baseUrl.length);
+    const result = await this.withAuthRetry(
+      (token) => this.http.downloadBinary(path, {}, token, { accept: "application/pdf" })
+    );
+    return {
+      data: result.data,
+      contentType: result.contentType,
+      filename: result.filename
+    };
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/dashboard/http.ts
 var DashboardHttp = class {
+  /** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
   baseUrl;
   timeout;
   fetchFn;
@@ -80,12 +635,12 @@ var DashboardHttp = class {
     }
     return parsed.data;
   }
-  async downloadBinary(path, query, token) {
+  async downloadBinary(path, query, token, options = {}) {
     const url = this.buildUrl(path, query);
     const response = await this.fetchWithTimeout(url, {
       method: "GET",
       headers: {
-        Accept: "application/octet-stream",
+        Accept: options.accept ?? "application/octet-stream",
         Authorization: token,
         Origin: "https://app.flowhub.com"
       }
@@ -293,6 +848,53 @@ var ReportsResource = class {
   }
 };
 
+// src/dashboard/rooms.ts
+var GET_ROOMS_QUERY = `
+query GetRooms {
+  rooms {
+    id
+    name
+    isForSale
+  }
+}
+`;
+var RoomsResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  async list() {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetRooms",
+          variables: {},
+          query: GET_ROOMS_QUERY
+        },
+        token
+      )
+    );
+    return data.rooms;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/dashboard/session-auth.ts
 var REFRESH_MARGIN_SECONDS = 5 * 60;
 var LOGIN_QUERY = `
@@ -362,10 +964,89 @@ var SessionAuth = class {
   }
 };
 
+// src/dashboard/users.ts
+var GET_USERS_QUERY = `
+query GetUsers(
+  $storeUsers: Boolean
+  $storeId: String
+  $storeIds: [String!]
+  $status: String
+  $orderBy: String
+  $isInternal: Boolean
+) {
+  users(
+    storeUsers: $storeUsers
+    storeId: $storeId
+    storeIds: $storeIds
+    status: $status
+    orderBy: $orderBy
+    isInternal: $isInternal
+  ) {
+    id
+    email
+    meta { firstName lastName }
+    phoneNumber
+    stores { id name }
+    role { id name permissions }
+  }
+}
+`;
+var UsersResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  /**
+   * List users. Pass `storeUsers: true` to scope to users assigned to a
+   * store (the most common case when populating a "who performed this
+   * action" dropdown).
+   */
+  async list(params = {}) {
+    const variables = {};
+    if (params.storeUsers !== void 0) variables.storeUsers = params.storeUsers;
+    if (params.storeId !== void 0) variables.storeId = params.storeId;
+    if (params.storeIds !== void 0) variables.storeIds = params.storeIds;
+    if (params.status !== void 0) variables.status = params.status;
+    if (params.orderBy !== void 0) variables.orderBy = params.orderBy;
+    if (params.isInternal !== void 0) variables.isInternal = params.isInternal;
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        {
+          operationName: "GetUsers",
+          variables,
+          query: GET_USERS_QUERY
+        },
+        token
+      )
+    );
+    return data.users;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/dashboard/client.ts
 var DEFAULT_DASHBOARD_BASE_URL = "https://api.flowhub.com";
 var FlowhubDashboardClient = class _FlowhubDashboardClient {
   reports;
+  drawers;
+  users;
+  rooms;
   storeId;
   config;
   constructor(config) {
@@ -383,19 +1064,197 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
     });
     const auth = new SessionAuth({ email: config.email, password: config.password }, http);
     this.reports = new ReportsResource(http, auth, config.storeId);
+    this.drawers = new DrawersResource(http, auth);
+    this.users = new UsersResource(http, auth);
+    this.rooms = new RoomsResource(http, auth);
   }
   /** Returns a new client scoped to the given storeId for default report params. */
   forStore(storeId) {
     return new _FlowhubDashboardClient({ ...this.config, storeId });
   }
 };
+
+// src/dashboard/drawer-watcher.ts
+var DEFAULT_INTERVAL_MS = 5e3;
+var DrawerWatcher = class {
+  opts;
+  intervalMs;
+  filterIds;
+  previous = /* @__PURE__ */ new Map();
+  hasBaseline = false;
+  stopped = false;
+  sleepAbort;
+  constructor(opts) {
+    this.opts = opts;
+    this.intervalMs = opts.intervalMs ?? DEFAULT_INTERVAL_MS;
+    this.filterIds = opts.drawerIds ? new Set(opts.drawerIds) : null;
+  }
+  /**
+   * Pre-fetch the baseline snapshot. Optional — if not called, the
+   * generator does it on first iteration. Useful when you want to align
+   * the baseline to a specific moment (e.g. right after a manual setup
+   * step) and then start iterating later.
+   */
+  async start() {
+    if (this.hasBaseline) return;
+    const drawers = await this.fetchFiltered();
+    this.previous = new Map(drawers.map((d) => [d.id, d]));
+    this.hasBaseline = true;
+  }
+  /**
+   * Halt polling. The active iterator will yield `done: true` on its
+   * next pull. Idempotent.
+   */
+  async stop() {
+    this.stopped = true;
+    this.sleepAbort?.abort();
+  }
+  events() {
+    const generator = this.run();
+    const self = this;
+    return {
+      [Symbol.asyncIterator]() {
+        return {
+          next: () => generator.next(),
+          return: async () => {
+            await self.stop();
+            return generator.return(void 0);
+          },
+          throw: (err) => generator.throw(err)
+        };
+      }
+    };
+  }
+  async *run() {
+    if (!this.hasBaseline) {
+      try {
+        const drawers = await this.fetchFiltered();
+        if (this.opts.emitInitial) {
+          for (const d of drawers) {
+            yield { kind: "drawer.created", drawer: d };
+            if (this.stopped) return;
+          }
+        }
+        this.previous = new Map(drawers.map((d) => [d.id, d]));
+        this.hasBaseline = true;
+      } catch (err) {
+        this.opts.onError?.(err);
+      }
+    }
+    while (!this.stopped) {
+      await this.sleep(this.intervalMs);
+      if (this.stopped) return;
+      try {
+        const drawers = await this.fetchFiltered();
+        const events = computeEvents(this.previous, drawers);
+        this.previous = new Map(drawers.map((d) => [d.id, d]));
+        for (const event of events) {
+          yield event;
+          if (this.stopped) return;
+        }
+      } catch (err) {
+        this.opts.onError?.(err);
+      }
+    }
+  }
+  async fetchFiltered() {
+    const drawers = await this.opts.drawers.list({ hidden: false });
+    if (this.filterIds) {
+      const f = this.filterIds;
+      return drawers.filter((d) => f.has(d.id));
+    }
+    return drawers;
+  }
+  async sleep(ms) {
+    if (ms <= 0) return;
+    const abort = new AbortController();
+    this.sleepAbort = abort;
+    try {
+      await new Promise((resolve) => {
+        const timer = setTimeout(() => resolve(), ms);
+        abort.signal.addEventListener("abort", () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    } finally {
+      this.sleepAbort = void 0;
+    }
+  }
+};
+var CASH_FIELDS = [
+  ["payins", "cash.payIn"],
+  ["payouts", "cash.payOut"],
+  ["drops", "cash.drop"],
+  ["pops", "cash.pop"]
+];
+function computeEvents(prev, nextList) {
+  const events = [];
+  const nextMap = new Map(nextList.map((d) => [d.id, d]));
+  for (const [id] of prev) {
+    if (!nextMap.has(id)) {
+      events.push({ kind: "drawer.deleted", drawerId: id });
+    }
+  }
+  for (const drawer of nextList) {
+    const previous = prev.get(drawer.id);
+    if (!previous) {
+      events.push({ kind: "drawer.created", drawer });
+      continue;
+    }
+    if (previous.name !== drawer.name || previous.type !== drawer.type || previous.dropTriggerBalance !== drawer.dropTriggerBalance || !sameIdSet(previous.rooms, drawer.rooms)) {
+      events.push({ kind: "drawer.updated", drawer, previous });
+    }
+    if (previous.openedAt == null && drawer.openedAt != null) {
+      events.push({ kind: "drawer.opened", drawer });
+    }
+    if (previous.closedAt == null && drawer.closedAt != null) {
+      events.push({ kind: "drawer.closed", drawer });
+    }
+    const prevUserIds = new Set(previous.users.map((u) => u.id));
+    const nextUserIds = new Set(drawer.users.map((u) => u.id));
+    for (const u of drawer.users) {
+      if (!prevUserIds.has(u.id)) {
+        events.push({ kind: "user.assigned", drawer, user: u });
+      }
+    }
+    for (const u of previous.users) {
+      if (!nextUserIds.has(u.id)) {
+        events.push({ kind: "user.unassigned", drawer, user: u });
+      }
+    }
+    for (const [field, kind] of CASH_FIELDS) {
+      const prevIds = new Set((previous.counts?.[field] ?? []).map((e) => e.id));
+      const nextEvents = drawer.counts?.[field] ?? [];
+      for (const event of nextEvents) {
+        if (!prevIds.has(event.id)) {
+          events.push({ kind, drawer, event });
+        }
+      }
+    }
+  }
+  return events;
+}
+function sameIdSet(a, b) {
+  if (a.length !== b.length) return false;
+  const setA = new Set(a.map((x) => x.id));
+  for (const x of b) {
+    if (!setA.has(x.id)) return false;
+  }
+  return true;
+}
 export {
   DEFAULT_DASHBOARD_BASE_URL,
+  DrawerWatcher,
+  DrawersResource,
   FlowhubAuthError,
   FlowhubDashboardClient,
   FlowhubError,
   FlowhubNotFoundError,
   FlowhubRateLimitError,
-  FlowhubValidationError
+  FlowhubValidationError,
+  RoomsResource,
+  UsersResource,
+  computeEvents
 };
 //# sourceMappingURL=index.js.map
