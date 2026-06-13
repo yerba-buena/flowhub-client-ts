@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 
 ## 0.0.1 (Unreleased)
 
+### Changed
+
+- **Renamed the `dashboard` surface to `internal`.** The reverse-engineered, non-public-API surface is now exported from `@yerba-buena/flowhub-client/internal` as `FlowhubInternalClient` (was `/dashboard` / `FlowhubDashboardClient`). The old import path and names are kept as **deprecated aliases** that re-export the new ones and still work; they will be removed in a future release. See the "Breaking changes & migration" section of the README. Renamed: `FlowhubDashboardClient` → `FlowhubInternalClient`, `FlowhubDashboardClientConfig` → `FlowhubInternalClientConfig`, `DEFAULT_DASHBOARD_BASE_URL` → `DEFAULT_INTERNAL_BASE_URL`. The `FLOWHUB_DASHBOARD_*` env-var convention used by the examples/tests is now `FLOWHUB_INTERNAL_*` (legacy names still accepted by the test suite).
+
 ### Added
 
 - `FlowhubClient` with credential management and `forLocation()` scoping

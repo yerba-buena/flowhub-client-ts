@@ -1,10 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
 import { FlowhubAuthError } from "../../src/errors.js";
+import { FlowhubInternalClient } from "../../src/internal/client.js";
 
-const DASHBOARD_URL = "https://api.flowhub.com";
+const BASE_URL = "https://api.flowhub.com";
 
 const server = setupServer();
 
@@ -15,7 +15,7 @@ afterAll(() => server.close());
 function loginHandler(
 	opts: { tokenId: string; loginCounter?: { count: number } } = { tokenId: "tok-1" },
 ) {
-	return http.post(`${DASHBOARD_URL}/graph/query`, () => {
+	return http.post(`${BASE_URL}/graph/query`, () => {
 		if (opts.loginCounter) opts.loginCounter.count++;
 		const nowSeconds = Math.floor(Date.now() / 1000);
 		return HttpResponse.json({
@@ -31,10 +31,10 @@ function loginHandler(
 }
 
 function makeClient(storeId?: string) {
-	return new FlowhubDashboardClient({
+	return new FlowhubInternalClient({
 		email: "user@example.com",
 		password: "pw",
-		baseUrl: DASHBOARD_URL,
+		baseUrl: BASE_URL,
 		storeId,
 	});
 }
@@ -45,7 +45,7 @@ describe("ReportsResource", () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		server.use(
 			loginHandler(),
-			http.post(`${DASHBOARD_URL}/analytics/query`, async ({ request }) => {
+			http.post(`${BASE_URL}/analytics/query`, async ({ request }) => {
 				capturedUrl = request.url;
 				capturedBody = (await request.json()) as Record<string, unknown>;
 				return HttpResponse.json({
@@ -117,7 +117,7 @@ describe("ReportsResource", () => {
 		let capturedUrl = "";
 		server.use(
 			loginHandler({ tokenId: "session-token-1" }),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, ({ request }) => {
+			http.get(`${BASE_URL}/analytics/accounting`, ({ request }) => {
 				capturedAuth = request.headers.get("authorization");
 				capturedUrl = request.url;
 				return new HttpResponse("col1,col2\nval1,val2\n", {
@@ -148,7 +148,7 @@ describe("ReportsResource", () => {
 	it("uses fallback filename when Content-Disposition is missing", async () => {
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, () => {
+			http.get(`${BASE_URL}/analytics/accounting`, () => {
 				return new HttpResponse("data\n", { status: 200 });
 			}),
 		);
@@ -165,7 +165,7 @@ describe("ReportsResource", () => {
 	it("uses single-date fallback filename when start_date equals end_date", async () => {
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, () => {
+			http.get(`${BASE_URL}/analytics/accounting`, () => {
 				return new HttpResponse("data\n", { status: 200 });
 			}),
 		);
@@ -182,7 +182,7 @@ describe("ReportsResource", () => {
 	it("extracts filename from Content-Disposition header when present", async () => {
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, () => {
+			http.get(`${BASE_URL}/analytics/accounting`, () => {
 				return new HttpResponse("data\n", {
 					status: 200,
 					headers: { "Content-Disposition": 'attachment; filename="custom-report.csv"' },
@@ -204,7 +204,7 @@ describe("ReportsResource", () => {
 		let downloadAttempts = 0;
 		server.use(
 			loginHandler({ tokenId: "fresh-token", loginCounter }),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, ({ request }) => {
+			http.get(`${BASE_URL}/analytics/accounting`, ({ request }) => {
 				downloadAttempts++;
 				const auth = request.headers.get("authorization");
 				if (downloadAttempts === 1) {
@@ -231,7 +231,7 @@ describe("ReportsResource", () => {
 		let downloadAttempts = 0;
 		server.use(
 			loginHandler({ tokenId: "tok", loginCounter }),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, () => {
+			http.get(`${BASE_URL}/analytics/accounting`, () => {
 				downloadAttempts++;
 				return new HttpResponse("Unauthorized", { status: 401 });
 			}),
@@ -253,7 +253,7 @@ describe("ReportsResource", () => {
 		let capturedUrl = "";
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, ({ request }) => {
+			http.get(`${BASE_URL}/analytics/accounting`, ({ request }) => {
 				capturedUrl = request.url;
 				return new HttpResponse("data\n", { status: 200 });
 			}),
@@ -272,7 +272,7 @@ describe("ReportsResource", () => {
 		let capturedUrl = "";
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, ({ request }) => {
+			http.get(`${BASE_URL}/analytics/accounting`, ({ request }) => {
 				capturedUrl = request.url;
 				return new HttpResponse("data\n", { status: 200 });
 			}),
@@ -293,7 +293,7 @@ describe("ReportsResource", () => {
 		let capturedUrl = "";
 		server.use(
 			loginHandler(),
-			http.get(`${DASHBOARD_URL}/analytics/inventory-snapshot`, ({ request }) => {
+			http.get(`${BASE_URL}/analytics/inventory-snapshot`, ({ request }) => {
 				capturedUrl = request.url;
 				return new HttpResponse("snapshot data\n", { status: 200 });
 			}),
@@ -314,7 +314,7 @@ describe("ReportsResource", () => {
 		const loginCounter = { count: 0 };
 		server.use(
 			loginHandler({ tokenId: "shared-token", loginCounter }),
-			http.get(`${DASHBOARD_URL}/analytics/accounting`, async () => {
+			http.get(`${BASE_URL}/analytics/accounting`, async () => {
 				await new Promise((r) => setTimeout(r, 20));
 				return new HttpResponse("ok\n", { status: 200 });
 			}),
@@ -331,24 +331,24 @@ describe("ReportsResource", () => {
 	});
 });
 
-describe("FlowhubDashboardClient", () => {
+describe("FlowhubInternalClient", () => {
 	it("throws if email is missing", () => {
-		expect(() => new FlowhubDashboardClient({ email: "", password: "pw" })).toThrow(
+		expect(() => new FlowhubInternalClient({ email: "", password: "pw" })).toThrow(
 			/email is required/,
 		);
 	});
 
 	it("throws if password is missing", () => {
-		expect(() => new FlowhubDashboardClient({ email: "u@x.co", password: "" })).toThrow(
+		expect(() => new FlowhubInternalClient({ email: "u@x.co", password: "" })).toThrow(
 			/password is required/,
 		);
 	});
 
 	it("forStore returns a new instance scoped to the storeId", () => {
-		const client = new FlowhubDashboardClient({
+		const client = new FlowhubInternalClient({
 			email: "u@x.co",
 			password: "pw",
-			baseUrl: DASHBOARD_URL,
+			baseUrl: BASE_URL,
 		});
 		const scoped = client.forStore("store-x");
 		expect(scoped).not.toBe(client);

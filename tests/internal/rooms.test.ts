@@ -1,9 +1,9 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
+import { FlowhubInternalClient } from "../../src/internal/client.js";
 
-const DASHBOARD_URL = "https://api.flowhub.com";
+const BASE_URL = "https://api.flowhub.com";
 
 const server = setupServer();
 
@@ -31,7 +31,7 @@ type GqlRoutes = Record<
 >;
 
 function gqlRouter(routes: GqlRoutes) {
-	return http.post(`${DASHBOARD_URL}/graph/query`, async ({ request }) => {
+	return http.post(`${BASE_URL}/graph/query`, async ({ request }) => {
 		const body = (await request.json()) as {
 			operationName: string;
 			variables: Record<string, unknown>;
@@ -45,10 +45,10 @@ function gqlRouter(routes: GqlRoutes) {
 }
 
 function makeClient() {
-	return new FlowhubDashboardClient({
+	return new FlowhubInternalClient({
 		email: "user@example.com",
 		password: "pw",
-		baseUrl: DASHBOARD_URL,
+		baseUrl: BASE_URL,
 	});
 }
 

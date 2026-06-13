@@ -35,6 +35,16 @@
         "default": "./dist/index.cjs"
       }
     },
+    "./internal": {
+      "import": {
+        "types": "./dist/internal/index.d.ts",
+        "default": "./dist/internal/index.js"
+      },
+      "require": {
+        "types": "./dist/internal/index.d.cts",
+        "default": "./dist/internal/index.cjs"
+      }
+    },
     "./dashboard": {
       "import": {
         "types": "./dist/dashboard/index.d.ts",
@@ -54,6 +64,9 @@
   ],
   "typesVersions": {
     "*": {
+      "internal": [
+        "dist/internal/index.d.ts"
+      ],
       "dashboard": [
         "dist/dashboard/index.d.ts"
       ]

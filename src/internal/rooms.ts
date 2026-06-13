@@ -1,6 +1,6 @@
 import { FlowhubAuthError } from "../errors.js";
 import type { Room } from "./cash-management-types.js";
-import type { DashboardHttp } from "./http.js";
+import type { InternalHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
 
 const GET_ROOMS_QUERY = `
@@ -22,7 +22,7 @@ query GetRooms {
  */
 export class RoomsResource {
 	constructor(
-		private readonly http: DashboardHttp,
+		private readonly http: InternalHttp,
 		private readonly auth: SessionAuth,
 	) {}
 

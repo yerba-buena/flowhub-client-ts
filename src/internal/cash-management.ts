@@ -12,7 +12,7 @@ import type {
 	ReceiptOptions,
 	UpdateDrawerInput,
 } from "./cash-management-types.js";
-import type { DashboardHttp } from "./http.js";
+import type { InternalHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
 
 const RECEIPT_KINDS_WITH_EVENT = new Set(["drop", "pop", "payin", "payout"]);
@@ -243,7 +243,7 @@ mutation MakePayout($drawerId: String!, $payout: CashEventInput!) {
  */
 export class DrawersResource {
 	constructor(
-		private readonly http: DashboardHttp,
+		private readonly http: InternalHttp,
 		private readonly auth: SessionAuth,
 	) {}
 

@@ -1,6 +1,6 @@
 import { FlowhubAuthError } from "../errors.js";
-import type { DashboardHttp } from "./http.js";
-import type { DashboardLoginResponse, FlowhubDashboardCredentials } from "./types.js";
+import type { InternalHttp } from "./http.js";
+import type { FlowhubInternalCredentials, InternalLoginResponse } from "./types.js";
 
 const REFRESH_MARGIN_SECONDS = 5 * 60;
 
@@ -32,12 +32,12 @@ interface CachedToken {
  * Credentials and tokens are never persisted, logged, or included in errors.
  */
 export class SessionAuth {
-	private readonly credentials: FlowhubDashboardCredentials;
-	private readonly http: DashboardHttp;
+	private readonly credentials: FlowhubInternalCredentials;
+	private readonly http: InternalHttp;
 	private cached: CachedToken | undefined;
 	private pendingLogin: Promise<CachedToken> | undefined;
 
-	constructor(credentials: FlowhubDashboardCredentials, http: DashboardHttp) {
+	constructor(credentials: FlowhubInternalCredentials, http: InternalHttp) {
 		this.credentials = credentials;
 		this.http = http;
 	}
@@ -68,7 +68,7 @@ export class SessionAuth {
 
 	private async login(): Promise<CachedToken> {
 		try {
-			const data = await this.http.graphql<{ login: DashboardLoginResponse }>({
+			const data = await this.http.graphql<{ login: InternalLoginResponse }>({
 				operationName: "Login",
 				variables: {
 					email: this.credentials.email,

@@ -1243,17 +1243,11 @@ function sameIdSet(a, b) {
   }
   return true;
 }
-
-// src/dashboard/index.ts
-var FlowhubDashboardClient = FlowhubInternalClient;
-var DEFAULT_DASHBOARD_BASE_URL = DEFAULT_INTERNAL_BASE_URL;
 export {
-  DEFAULT_DASHBOARD_BASE_URL,
   DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher,
   DrawersResource,
   FlowhubAuthError,
-  FlowhubDashboardClient,
   FlowhubError,
   FlowhubInternalClient,
   FlowhubNotFoundError,

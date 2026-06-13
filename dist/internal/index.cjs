@@ -1,3 +1,40 @@
+"use strict";
+var __defProp = Object.defineProperty;
+var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+var __getOwnPropNames = Object.getOwnPropertyNames;
+var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __export = (target, all) => {
+  for (var name in all)
+    __defProp(target, name, { get: all[name], enumerable: true });
+};
+var __copyProps = (to, from, except, desc) => {
+  if (from && typeof from === "object" || typeof from === "function") {
+    for (let key of __getOwnPropNames(from))
+      if (!__hasOwnProp.call(to, key) && key !== except)
+        __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+  }
+  return to;
+};
+var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+// src/internal/index.ts
+var internal_exports = {};
+__export(internal_exports, {
+  DEFAULT_INTERNAL_BASE_URL: () => DEFAULT_INTERNAL_BASE_URL,
+  DrawerWatcher: () => DrawerWatcher,
+  DrawersResource: () => DrawersResource,
+  FlowhubAuthError: () => FlowhubAuthError,
+  FlowhubError: () => FlowhubError,
+  FlowhubInternalClient: () => FlowhubInternalClient,
+  FlowhubNotFoundError: () => FlowhubNotFoundError,
+  FlowhubRateLimitError: () => FlowhubRateLimitError,
+  FlowhubValidationError: () => FlowhubValidationError,
+  RoomsResource: () => RoomsResource,
+  UsersResource: () => UsersResource,
+  computeEvents: () => computeEvents
+});
+module.exports = __toCommonJS(internal_exports);
+
 // src/constants.ts
 var DEFAULT_TIMEOUT_MS = 3e4;
 
@@ -1243,17 +1280,12 @@ function sameIdSet(a, b) {
   }
   return true;
 }
-
-// src/dashboard/index.ts
-var FlowhubDashboardClient = FlowhubInternalClient;
-var DEFAULT_DASHBOARD_BASE_URL = DEFAULT_INTERNAL_BASE_URL;
-export {
-  DEFAULT_DASHBOARD_BASE_URL,
+// Annotate the CommonJS export names for ESM import in node:
+0 && (module.exports = {
   DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher,
   DrawersResource,
   FlowhubAuthError,
-  FlowhubDashboardClient,
   FlowhubError,
   FlowhubInternalClient,
   FlowhubNotFoundError,
@@ -1262,5 +1294,5 @@ export {
   RoomsResource,
   UsersResource,
   computeEvents
-};
-//# sourceMappingURL=index.js.map
+});
+//# sourceMappingURL=index.cjs.map

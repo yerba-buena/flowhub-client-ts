@@ -1,11 +1,11 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { DashboardHttp } from "../../src/dashboard/http.js";
-import { SessionAuth } from "../../src/dashboard/session-auth.js";
 import { FlowhubAuthError } from "../../src/errors.js";
+import { InternalHttp } from "../../src/internal/http.js";
+import { SessionAuth } from "../../src/internal/session-auth.js";
 
-const DASHBOARD_URL = "https://api.flowhub.com";
+const BASE_URL = "https://api.flowhub.com";
 
 function makeLoginResponse(
 	overrides: Partial<{ id: string; refreshId: string; expireTime: number }> = {},
@@ -32,7 +32,7 @@ afterEach(() => {
 afterAll(() => server.close());
 
 function makeAuth(credentials = { email: "user@example.com", password: "secret" }) {
-	const httpClient = new DashboardHttp({ baseUrl: DASHBOARD_URL, timeout: 5000 });
+	const httpClient = new InternalHttp({ baseUrl: BASE_URL, timeout: 5000 });
 	return new SessionAuth(credentials, httpClient);
 }
 
@@ -40,7 +40,7 @@ describe("SessionAuth", () => {
 	it("logs in lazily and returns the access token", async () => {
 		let capturedBody: Record<string, unknown> | undefined;
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, async ({ request }) => {
+			http.post(`${BASE_URL}/graph/query`, async ({ request }) => {
 				capturedBody = (await request.json()) as Record<string, unknown>;
 				return HttpResponse.json(makeLoginResponse({ id: "first-token" }));
 			}),
@@ -66,7 +66,7 @@ describe("SessionAuth", () => {
 	it("reuses the cached token across sequential getToken() calls", async () => {
 		let loginCount = 0;
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, () => {
+			http.post(`${BASE_URL}/graph/query`, () => {
 				loginCount++;
 				return HttpResponse.json(makeLoginResponse({ id: "cached-token" }));
 			}),
@@ -86,7 +86,7 @@ describe("SessionAuth", () => {
 	it("concurrent getToken() calls share a single login request", async () => {
 		let loginCount = 0;
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, async () => {
+			http.post(`${BASE_URL}/graph/query`, async () => {
 				loginCount++;
 				await new Promise((r) => setTimeout(r, 30));
 				return HttpResponse.json(makeLoginResponse({ id: "shared-token" }));
@@ -116,7 +116,7 @@ describe("SessionAuth", () => {
 		const nowSeconds = Math.floor(Date.now() / 1000);
 		let loginCount = 0;
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, () => {
+			http.post(`${BASE_URL}/graph/query`, () => {
 				loginCount++;
 				const expireTime = loginCount === 1 ? nowSeconds + 60 : nowSeconds + 4 * 60 * 60;
 				return HttpResponse.json(makeLoginResponse({ id: `token-${loginCount}`, expireTime }));
@@ -135,7 +135,7 @@ describe("SessionAuth", () => {
 	it("invalidate() forces re-login on the next getToken()", async () => {
 		let loginCount = 0;
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, () => {
+			http.post(`${BASE_URL}/graph/query`, () => {
 				loginCount++;
 				return HttpResponse.json(makeLoginResponse({ id: `token-${loginCount}` }));
 			}),
@@ -153,7 +153,7 @@ describe("SessionAuth", () => {
 
 	it("throws FlowhubAuthError on failed login without exposing credentials", async () => {
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, () => {
+			http.post(`${BASE_URL}/graph/query`, () => {
 				return HttpResponse.json(
 					{ errors: [{ message: "Invalid email or password" }] },
 					{ status: 200 },
@@ -177,7 +177,7 @@ describe("SessionAuth", () => {
 
 	it("throws FlowhubAuthError on HTTP 401 from server", async () => {
 		server.use(
-			http.post(`${DASHBOARD_URL}/graph/query`, () => {
+			http.post(`${BASE_URL}/graph/query`, () => {
 				return new HttpResponse("Unauthorized", { status: 401 });
 			}),
 		);

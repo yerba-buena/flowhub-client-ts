@@ -1,10 +1,10 @@
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
 import { FlowhubAuthError } from "../../src/errors.js";
+import { FlowhubInternalClient } from "../../src/internal/client.js";
 
-const DASHBOARD_URL = "https://api.flowhub.com";
+const BASE_URL = "https://api.flowhub.com";
 
 const server = setupServer();
 
@@ -38,7 +38,7 @@ type GqlRoutes = Record<string, ((args: GqlHandlerArgs) => GqlHandlerResult) | u
  * `operationName` in the request body.
  */
 function gqlRouter(routes: GqlRoutes) {
-	return http.post(`${DASHBOARD_URL}/graph/query`, async ({ request }) => {
+	return http.post(`${BASE_URL}/graph/query`, async ({ request }) => {
 		const body = (await request.json()) as {
 			operationName: string;
 			variables: Record<string, unknown>;
@@ -58,10 +58,10 @@ function gqlRouter(routes: GqlRoutes) {
 }
 
 function makeClient() {
-	return new FlowhubDashboardClient({
+	return new FlowhubInternalClient({
 		email: "user@example.com",
 		password: "pw",
-		baseUrl: DASHBOARD_URL,
+		baseUrl: BASE_URL,
 	});
 }
 
@@ -704,10 +704,10 @@ describe("DrawersResource receipts", () => {
 		it("builds the open / close URL with no eventId", () => {
 			const client = makeClient();
 			expect(client.drawers.buildReceiptUrl({ drawerCountId: "c-1", kind: "open" })).toBe(
-				`${DASHBOARD_URL}/printing/drawer/c-1/open`,
+				`${BASE_URL}/printing/drawer/c-1/open`,
 			);
 			expect(client.drawers.buildReceiptUrl({ drawerCountId: "c-1", kind: "close" })).toBe(
-				`${DASHBOARD_URL}/printing/drawer/c-1/close`,
+				`${BASE_URL}/printing/drawer/c-1/close`,
 			);
 		});
 
@@ -720,7 +720,7 @@ describe("DrawersResource receipts", () => {
 						kind,
 						eventId: "ev-9",
 					}),
-				).toBe(`${DASHBOARD_URL}/printing/drawer/c-1/${kind}/ev-9`);
+				).toBe(`${BASE_URL}/printing/drawer/c-1/${kind}/ev-9`);
 			}
 		});
 
@@ -755,7 +755,7 @@ describe("DrawersResource receipts", () => {
 				gqlRouter({
 					Login: () => makeLoginPayload("session-tok"),
 				}),
-				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/open`, ({ request }) => {
+				http.get(`${BASE_URL}/printing/drawer/c-1/open`, ({ request }) => {
 					capturedAuth = request.headers.get("authorization");
 					capturedAccept = request.headers.get("accept");
 					capturedUrl = request.url;
@@ -777,7 +777,7 @@ describe("DrawersResource receipts", () => {
 
 			expect(capturedAuth).toBe("session-tok");
 			expect(capturedAccept).toBe("application/pdf");
-			expect(capturedUrl).toBe(`${DASHBOARD_URL}/printing/drawer/c-1/open`);
+			expect(capturedUrl).toBe(`${BASE_URL}/printing/drawer/c-1/open`);
 			expect(result.contentType).toBe("application/pdf");
 			expect(result.filename).toBe("drawer-c-1-open.pdf");
 			expect(result.data.toString("utf-8")).toBe("%PDF-1.4 test\n");
@@ -794,7 +794,7 @@ describe("DrawersResource receipts", () => {
 						return makeLoginPayload(tokens.shift() ?? "tok-fresh");
 					},
 				}),
-				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/close`, ({ request }) => {
+				http.get(`${BASE_URL}/printing/drawer/c-1/close`, ({ request }) => {
 					attempts++;
 					const auth = request.headers.get("authorization");
 					if (attempts === 1) {
@@ -821,7 +821,7 @@ describe("DrawersResource receipts", () => {
 			let attempts = 0;
 			server.use(
 				gqlRouter({ Login: () => makeLoginPayload() }),
-				http.get(`${DASHBOARD_URL}/printing/drawer/c-1/drop/ev-9`, () => {
+				http.get(`${BASE_URL}/printing/drawer/c-1/drop/ev-9`, () => {
 					attempts++;
 					return new HttpResponse("Not Found", { status: 404 });
 				}),

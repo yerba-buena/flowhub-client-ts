@@ -21,11 +21,13 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 var dashboard_exports = {};
 __export(dashboard_exports, {
   DEFAULT_DASHBOARD_BASE_URL: () => DEFAULT_DASHBOARD_BASE_URL,
+  DEFAULT_INTERNAL_BASE_URL: () => DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher: () => DrawerWatcher,
   DrawersResource: () => DrawersResource,
   FlowhubAuthError: () => FlowhubAuthError,
   FlowhubDashboardClient: () => FlowhubDashboardClient,
   FlowhubError: () => FlowhubError,
+  FlowhubInternalClient: () => FlowhubInternalClient,
   FlowhubNotFoundError: () => FlowhubNotFoundError,
   FlowhubRateLimitError: () => FlowhubRateLimitError,
   FlowhubValidationError: () => FlowhubValidationError,
@@ -78,7 +80,7 @@ var FlowhubValidationError = class extends FlowhubError {
   }
 };
 
-// src/dashboard/cash-management.ts
+// src/internal/cash-management.ts
 var RECEIPT_KINDS_WITH_EVENT = /* @__PURE__ */ new Set(["drop", "pop", "payin", "payout"]);
 var DRAWER_FIELDS = `
 fragment DrawerFields on Drawer {
@@ -632,8 +634,8 @@ var DrawersResource = class {
   }
 };
 
-// src/dashboard/http.ts
-var DashboardHttp = class {
+// src/internal/http.ts
+var InternalHttp = class {
   /** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
   baseUrl;
   timeout;
@@ -742,7 +744,7 @@ var DashboardHttp = class {
   }
 };
 
-// src/dashboard/reports.ts
+// src/internal/reports.ts
 var GET_REPORTS_QUERY = `
 query GetReports {
   reports {
@@ -885,7 +887,7 @@ var ReportsResource = class {
   }
 };
 
-// src/dashboard/rooms.ts
+// src/internal/rooms.ts
 var GET_ROOMS_QUERY = `
 query GetRooms {
   rooms {
@@ -932,7 +934,7 @@ var RoomsResource = class {
   }
 };
 
-// src/dashboard/session-auth.ts
+// src/internal/session-auth.ts
 var REFRESH_MARGIN_SECONDS = 5 * 60;
 var LOGIN_QUERY = `
 query Login($email: String!, $password: String!) {
@@ -1001,7 +1003,7 @@ var SessionAuth = class {
   }
 };
 
-// src/dashboard/users.ts
+// src/internal/users.ts
 var GET_USERS_QUERY = `
 query GetUsers(
   $storeUsers: Boolean
@@ -1077,9 +1079,9 @@ var UsersResource = class {
   }
 };
 
-// src/dashboard/client.ts
-var DEFAULT_DASHBOARD_BASE_URL = "https://api.flowhub.com";
-var FlowhubDashboardClient = class _FlowhubDashboardClient {
+// src/internal/client.ts
+var DEFAULT_INTERNAL_BASE_URL = "https://api.flowhub.com";
+var FlowhubInternalClient = class _FlowhubInternalClient {
   reports;
   drawers;
   users;
@@ -1088,15 +1090,15 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
   config;
   constructor(config) {
     if (!config.email || config.email.trim() === "") {
-      throw new FlowhubError("FlowhubDashboardClient: email is required");
+      throw new FlowhubError("FlowhubInternalClient: email is required");
     }
     if (!config.password || config.password === "") {
-      throw new FlowhubError("FlowhubDashboardClient: password is required");
+      throw new FlowhubError("FlowhubInternalClient: password is required");
     }
     this.config = config;
     this.storeId = config.storeId;
-    const http = new DashboardHttp({
-      baseUrl: config.baseUrl ?? DEFAULT_DASHBOARD_BASE_URL,
+    const http = new InternalHttp({
+      baseUrl: config.baseUrl ?? DEFAULT_INTERNAL_BASE_URL,
       timeout: config.timeout ?? DEFAULT_TIMEOUT_MS
     });
     const auth = new SessionAuth({ email: config.email, password: config.password }, http);
@@ -1107,11 +1109,11 @@ var FlowhubDashboardClient = class _FlowhubDashboardClient {
   }
   /** Returns a new client scoped to the given storeId for default report params. */
   forStore(storeId) {
-    return new _FlowhubDashboardClient({ ...this.config, storeId });
+    return new _FlowhubInternalClient({ ...this.config, storeId });
   }
 };
 
-// src/dashboard/drawer-watcher.ts
+// src/internal/drawer-watcher.ts
 var DEFAULT_INTERVAL_MS = 5e3;
 var DrawerWatcher = class {
   opts;
@@ -1280,14 +1282,20 @@ function sameIdSet(a, b) {
   }
   return true;
 }
+
+// src/dashboard/index.ts
+var FlowhubDashboardClient = FlowhubInternalClient;
+var DEFAULT_DASHBOARD_BASE_URL = DEFAULT_INTERNAL_BASE_URL;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_DASHBOARD_BASE_URL,
+  DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher,
   DrawersResource,
   FlowhubAuthError,
   FlowhubDashboardClient,
   FlowhubError,
+  FlowhubInternalClient,
   FlowhubNotFoundError,
   FlowhubRateLimitError,
   FlowhubValidationError,

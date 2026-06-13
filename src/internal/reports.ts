@@ -1,5 +1,5 @@
 import { FlowhubAuthError } from "../errors.js";
-import type { DashboardHttp } from "./http.js";
+import type { InternalHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
 import type { CommonReportParams, ReportDownload, ReportMetadata, ReportParams } from "./types.js";
 
@@ -42,7 +42,7 @@ query GetReports {
  */
 export class ReportsResource {
 	constructor(
-		private readonly http: DashboardHttp,
+		private readonly http: InternalHttp,
 		private readonly auth: SessionAuth,
 		private readonly defaultStoreId: string | undefined,
 	) {}

@@ -1,6 +1,6 @@
 import { FlowhubAuthError } from "../errors.js";
 import type { ListUsersParams, User } from "./cash-management-types.js";
-import type { DashboardHttp } from "./http.js";
+import type { InternalHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
 
 const GET_USERS_QUERY = `
@@ -38,7 +38,7 @@ query GetUsers(
  */
 export class UsersResource {
 	constructor(
-		private readonly http: DashboardHttp,
+		private readonly http: InternalHttp,
 		private readonly auth: SessionAuth,
 	) {}
 

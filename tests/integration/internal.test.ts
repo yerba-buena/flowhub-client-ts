@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
+import { FlowhubInternalClient } from "../../src/internal/client.js";
 
 try {
 	const envPath = resolve(import.meta.dirname, "../../.env");
@@ -11,17 +11,23 @@ try {
 	}
 } catch {}
 
-const SKIP = !process.env.FLOWHUB_DASHBOARD_EMAIL || !process.env.FLOWHUB_DASHBOARD_PASSWORD;
+// Prefer the new FLOWHUB_INTERNAL_* vars; fall back to the legacy
+// FLOWHUB_DASHBOARD_* names so existing .env files keep working.
+const EMAIL = process.env.FLOWHUB_INTERNAL_EMAIL ?? process.env.FLOWHUB_DASHBOARD_EMAIL;
+const PASSWORD = process.env.FLOWHUB_INTERNAL_PASSWORD ?? process.env.FLOWHUB_DASHBOARD_PASSWORD;
+const STORE_ID = process.env.FLOWHUB_INTERNAL_STORE_ID ?? process.env.FLOWHUB_DASHBOARD_STORE_ID;
 
-describe.skipIf(SKIP)("Dashboard integration", () => {
+const SKIP = !EMAIL || !PASSWORD;
+
+describe.skipIf(SKIP)("Internal API integration", () => {
 	const today = new Date().toISOString().slice(0, 10);
 	const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 	function makeClient() {
-		return new FlowhubDashboardClient({
-			email: process.env.FLOWHUB_DASHBOARD_EMAIL!,
-			password: process.env.FLOWHUB_DASHBOARD_PASSWORD!,
-			storeId: process.env.FLOWHUB_DASHBOARD_STORE_ID,
+		return new FlowhubInternalClient({
+			email: EMAIL!,
+			password: PASSWORD!,
+			storeId: STORE_ID,
 		});
 	}
 
