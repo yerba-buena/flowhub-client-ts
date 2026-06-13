@@ -4,8 +4,8 @@ import type {
 	Drawer,
 	DrawerEvent,
 	DrawerSource,
-} from "../../src/dashboard/cash-management-types.js";
-import { DrawerWatcher, computeEvents } from "../../src/dashboard/drawer-watcher.js";
+} from "../../src/internal/cash-management-types.js";
+import { DrawerWatcher, computeEvents } from "../../src/internal/drawer-watcher.js";
 
 /* -------------------------------------------------------------------------
  * Test helpers

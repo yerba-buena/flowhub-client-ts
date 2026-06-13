@@ -1,9 +1,9 @@
-export interface FlowhubDashboardCredentials {
+export interface FlowhubInternalCredentials {
 	readonly email: string;
 	readonly password: string;
 }
 
-export interface DashboardLoginResponse {
+export interface InternalLoginResponse {
 	readonly id: string;
 	readonly refreshId: string;
 	readonly expireTime: number;

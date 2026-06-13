@@ -2,7 +2,6 @@ import type {
 	CashEvent,
 	Drawer,
 	DrawerEvent,
-	DrawerSource,
 	DrawerWatcherOptions,
 } from "./cash-management-types.js";
 

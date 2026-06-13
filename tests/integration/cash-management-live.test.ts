@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { CountRecord, Drawer } from "../../src/dashboard/cash-management-types.js";
-import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
+import type { CountRecord, Drawer } from "../../src/internal/cash-management-types.js";
+import { FlowhubInternalClient } from "../../src/internal/client.js";
 
 /*
  * Live cash-management integration tests.
@@ -17,8 +17,8 @@ import { FlowhubDashboardClient } from "../../src/dashboard/client.js";
  *   FLOWHUB_TEST_USER_ID=<uuid of a service-account user>
  *   FLOWHUB_LIVE_TEST_CONFIRM=I-UNDERSTAND-THIS-HITS-PRODUCTION
  *
- * Plus the standard FLOWHUB_DASHBOARD_EMAIL / FLOWHUB_DASHBOARD_PASSWORD
- * credentials.
+ * Plus the standard FLOWHUB_INTERNAL_EMAIL / FLOWHUB_INTERNAL_PASSWORD
+ * credentials (the legacy FLOWHUB_DASHBOARD_* names are also accepted).
  *
  * Pre-flight (run manually, once):
  *   1. In the Flowhub dashboard, create a drawer named DO-NOT-USE-AUTOMATED-TEST
@@ -46,13 +46,18 @@ try {
 
 const REQUIRED_CONFIRMATION = "I-UNDERSTAND-THIS-HITS-PRODUCTION";
 
+// Prefer the new FLOWHUB_INTERNAL_* vars; fall back to the legacy
+// FLOWHUB_DASHBOARD_* names so existing .env files keep working.
+const EMAIL = process.env.FLOWHUB_INTERNAL_EMAIL ?? process.env.FLOWHUB_DASHBOARD_EMAIL;
+const PASSWORD = process.env.FLOWHUB_INTERNAL_PASSWORD ?? process.env.FLOWHUB_DASHBOARD_PASSWORD;
+
 const SKIP =
 	process.env.FLOWHUB_LIVE_TEST !== "1" ||
 	process.env.FLOWHUB_LIVE_TEST_CONFIRM !== REQUIRED_CONFIRMATION ||
 	!process.env.FLOWHUB_TEST_DRAWER_ID ||
 	!process.env.FLOWHUB_TEST_USER_ID ||
-	!process.env.FLOWHUB_DASHBOARD_EMAIL ||
-	!process.env.FLOWHUB_DASHBOARD_PASSWORD;
+	!EMAIL ||
+	!PASSWORD;
 
 const TEST_NOTE_PREFIX = "AUTOMATED-TEST FAKE DATA";
 
@@ -85,9 +90,9 @@ describe.skipIf(SKIP)("Cash management live integration", () => {
 	const userId = process.env.FLOWHUB_TEST_USER_ID!;
 
 	function makeClient() {
-		return new FlowhubDashboardClient({
-			email: process.env.FLOWHUB_DASHBOARD_EMAIL!,
-			password: process.env.FLOWHUB_DASHBOARD_PASSWORD!,
+		return new FlowhubInternalClient({
+			email: EMAIL!,
+			password: PASSWORD!,
 		});
 	}
 

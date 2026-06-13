@@ -2,9 +2,9 @@
 "@yerba-buena/flowhub-client": minor
 ---
 
-Add cash-management resource to the dashboard client.
+Add cash-management resource to the internal client.
 
-`FlowhubDashboardClient` now exposes `drawers`, `users`, and `rooms` alongside `reports`. The new surface covers Flowhub's drawer / cash-management workflow end-to-end:
+`FlowhubInternalClient` now exposes `drawers`, `users`, and `rooms` alongside `reports`. The new surface covers Flowhub's drawer / cash-management workflow end-to-end:
 
 - **Drawer CRUD** — `drawers.list / get / create / update / delete`
 - **User assignment** — `drawers.assignUser / unassignUser` (drawer ↔ user is many-to-many)

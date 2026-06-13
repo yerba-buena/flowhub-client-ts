@@ -5,7 +5,7 @@ import {
 	FlowhubRateLimitError,
 } from "../errors.js";
 
-export interface DashboardHttpOptions {
+export interface InternalHttpOptions {
 	readonly baseUrl: string;
 	readonly timeout: number;
 	readonly fetchFn?: typeof fetch | undefined;
@@ -34,13 +34,13 @@ export interface GraphQLResponse<T> {
  * No automatic retry: dashboard endpoints are reverse-engineered and we don't
  * want to hammer them.
  */
-export class DashboardHttp {
+export class InternalHttp {
 	/** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
 	readonly baseUrl: string;
 	private readonly timeout: number;
 	private readonly fetchFn: typeof fetch;
 
-	constructor(options: DashboardHttpOptions) {
+	constructor(options: InternalHttpOptions) {
 		this.baseUrl = options.baseUrl.replace(/\/+$/, "");
 		this.timeout = options.timeout;
 		this.fetchFn = options.fetchFn ?? globalThis.fetch;

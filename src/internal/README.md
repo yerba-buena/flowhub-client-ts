@@ -1,26 +1,53 @@
-# Flowhub Dashboard Client
+# Flowhub Internal Client
 
-> ⚠️ **This module uses Flowhub's internal dashboard endpoints, which are not part of their public API.**
+> ℹ️ **Renamed:** this was previously the "dashboard client"
+> (`@yerba-buena/flowhub-client/dashboard` / `FlowhubDashboardClient`). The old
+> import path and names still work but are **deprecated** — see
+> [Migrating from the dashboard client](#migrating-from-the-dashboard-client).
+
+> ⚠️ **This module uses Flowhub's internal endpoints, which are not part of their public API.**
 >
 > These endpoints are undocumented, not under any stability contract, and can change or break without warning. They authenticate using human dashboard credentials (email + password) rather than API keys. Expect periodic breakage and have a fallback plan.
 >
-> If Flowhub publishes an official reports API, switch to it.
+> If Flowhub publishes an official API for this data, switch to it.
 
 ## What this is for
 
-Downloading CSV reports (sales, transactions, inventory snapshots, etc.) that are only available through the Flowhub dashboard UI. The public Flowhub API does not expose these reports.
+Anything that isn't in Flowhub's public API but is reachable by reverse-engineering the web interface — currently CSV reports (sales, transactions, inventory snapshots, etc.) and the full cash-management surface (drawers, counts, cash events, receipts). The public Flowhub API does not expose any of this; the only first-party path is the dashboard UI, and this module automates that same surface.
+
+The name is `internal` (not `dashboard`) because it's about the *kind* of API — Flowhub's private internals — not the one screen it happens to be reachable from.
 
 ## How this differs from the main client
 
-| | `FlowhubClient` (`/`) | `FlowhubDashboardClient` (`/dashboard`) |
+| | `FlowhubClient` (`/`) | `FlowhubInternalClient` (`/internal`) |
 |---|---|---|
 | **Source** | Public, documented Flowhub API | Reverse-engineered internal endpoints used by app.flowhub.com |
 | **Auth** | `clientId` + `apiKey` (issued by Flowhub for API access) | Dashboard user `email` + `password` |
 | **Stability** | Versioned, published spec | None — can change or break without notice |
-| **Returns** | JSON data | Raw CSV bytes (`Buffer`) |
-| **Use this for** | Building integrations, syncing inventory/orders | Pulling reports that aren't in the public API |
+| **Returns** | JSON data | JSON, raw CSV bytes (`Buffer`), and PDF bytes depending on the call |
+| **Use this for** | Building integrations, syncing inventory/orders | Reports and cash-management data that aren't in the public API |
 
-Both surfaces live in the same package but are imported separately. Using the dashboard client does **not** require API access from Flowhub — but it does require valid dashboard user credentials.
+Both surfaces live in the same package but are imported separately. Using the internal client does **not** require API access from Flowhub — but it does require valid dashboard user credentials.
+
+## Migrating from the dashboard client
+
+The old `dashboard` naming was too narrow, so it was renamed to `internal`. The old surface is kept as a deprecated alias and still works unchanged:
+
+| Old (deprecated) | New |
+|---|---|
+| `import … from "@yerba-buena/flowhub-client/dashboard"` | `import … from "@yerba-buena/flowhub-client/internal"` |
+| `FlowhubDashboardClient` | `FlowhubInternalClient` |
+| `FlowhubDashboardClientConfig` | `FlowhubInternalClientConfig` |
+| `DEFAULT_DASHBOARD_BASE_URL` | `DEFAULT_INTERNAL_BASE_URL` |
+
+```ts
+// before
+import { FlowhubDashboardClient } from "@yerba-buena/flowhub-client/dashboard";
+// after
+import { FlowhubInternalClient } from "@yerba-buena/flowhub-client/internal";
+```
+
+The `/dashboard` entry point re-exports everything from `/internal` (with the old names as `@deprecated` aliases) and will be removed in a future release. All resources, types, errors, and behavior are otherwise identical — only the names and import path changed. Update at your convenience.
 
 ## Getting credentials
 
@@ -78,9 +105,9 @@ This client requires a Flowhub dashboard email and password. **These are human u
 ## Configuration
 
 ```ts
-import { FlowhubDashboardClient } from "@yerba-buena/flowhub-client/dashboard";
+import { FlowhubInternalClient } from "@yerba-buena/flowhub-client/internal";
 
-const dashboard = new FlowhubDashboardClient({
+const internal = new FlowhubInternalClient({
   email: process.env.FLOWHUB_DASHBOARD_EMAIL!,        // required
   password: process.env.FLOWHUB_DASHBOARD_PASSWORD!,  // required
   storeId: process.env.FLOWHUB_STORE_ID,              // optional default
@@ -96,7 +123,7 @@ const dashboard = new FlowhubDashboardClient({
 The generic method works for any of the ~60 report IDs Flowhub exposes:
 
 ```ts
-const { data, filename, contentType } = await dashboard.reports.downloadReport(
+const { data, filename, contentType } = await internal.reports.downloadReport(
   "accounting",
   {
     start_date: "2026-04-01",
@@ -114,13 +141,13 @@ await writeFile(filename, data);
 Pre-typed methods for common reports:
 
 ```ts
-await dashboard.reports.downloadAccounting({ start_date, end_date, store_id });
-await dashboard.reports.downloadSalesByDayStore({ start_date, end_date, store_id });
-await dashboard.reports.downloadCategorySales({ start_date, end_date, store_id });
-await dashboard.reports.downloadEndOfDay({ start_date, end_date, store_id });
-await dashboard.reports.downloadTransactions({ start_date, end_date, store_id });
-await dashboard.reports.downloadInventorySnapshot({ store_id });
-await dashboard.reports.downloadInventoryLevels({ store_id });
+await internal.reports.downloadAccounting({ start_date, end_date, store_id });
+await internal.reports.downloadSalesByDayStore({ start_date, end_date, store_id });
+await internal.reports.downloadCategorySales({ start_date, end_date, store_id });
+await internal.reports.downloadEndOfDay({ start_date, end_date, store_id });
+await internal.reports.downloadTransactions({ start_date, end_date, store_id });
+await internal.reports.downloadInventorySnapshot({ store_id });
+await internal.reports.downloadInventoryLevels({ store_id });
 ```
 
 ### Store scoping
@@ -128,7 +155,7 @@ await dashboard.reports.downloadInventoryLevels({ store_id });
 If you set a default `storeId` in config, or use `forStore()`, you can omit it from individual calls:
 
 ```ts
-const cobbleHill = dashboard.forStore("cobble-hill-store-id");
+const cobbleHill = internal.forStore("cobble-hill-store-id");
 
 const { data } = await cobbleHill.reports.downloadAccounting({
   start_date: "2026-04-01",
@@ -143,7 +170,7 @@ const { data } = await cobbleHill.reports.downloadAccounting({
 Enumerate every report available to the authenticated user (including custom/shared reports specific to your account) at runtime:
 
 ```ts
-const reports = await dashboard.reports.listReports();
+const reports = await internal.reports.listReports();
 
 for (const r of reports) {
   console.log(`${r.reportId} — ${r.name} (${r.type})${r.isCustom ? " [custom]" : ""}`);
@@ -173,7 +200,7 @@ for (const r of reports) {
 
 ## Cash management
 
-The dashboard client also exposes Flowhub's cash-management surface — drawers, opening / closing counts, drop / pop / pay-in / pay-out events, the audit feed, tips, and PDF receipts. Plus a `DrawerWatcher` that polls and emits a typed event stream you can sync into your own DB.
+The internal client also exposes Flowhub's cash-management surface — drawers, opening / closing counts, drop / pop / pay-in / pay-out events, the audit feed, tips, and PDF receipts. Plus a `DrawerWatcher` that polls and emits a typed event stream you can sync into your own DB.
 
 Same caveats as the reports surface: these are internal endpoints, undocumented, and may break.
 
@@ -188,39 +215,39 @@ Same caveats as the reports surface: these are internal endpoints, undocumented,
 ### Listing and reading drawers
 
 ```ts
-const drawers = await dashboard.drawers.list({ hidden: false });
-const one = await dashboard.drawers.get("drawer-uuid");
+const drawers = await internal.drawers.list({ hidden: false });
+const one = await internal.drawers.get("drawer-uuid");
 ```
 
 ### Drawer CRUD and user assignment
 
 ```ts
-const created = await dashboard.drawers.create({
+const created = await internal.drawers.create({
   name: "Register 2",
   type: "REC",                     // "REC" | "MED"
-  rooms: ["room-uuid-1"],          // room UUIDs from dashboard.rooms.list()
+  rooms: ["room-uuid-1"],          // room UUIDs from internal.rooms.list()
   dropTriggerBalance: 100_000,     // cents — $1,000
 });
 
-await dashboard.drawers.update(created.id, {
+await internal.drawers.update(created.id, {
   name: "Register 2 — Renamed",
   type: "REC",
   rooms: ["room-uuid-1", "room-uuid-2"],
   dropTriggerBalance: 150_000,
 });
 
-await dashboard.drawers.assignUser(created.id, "user-uuid");
-await dashboard.drawers.unassignUser(created.id, "user-uuid");
+await internal.drawers.assignUser(created.id, "user-uuid");
+await internal.drawers.unassignUser(created.id, "user-uuid");
 
-await dashboard.drawers.delete(created.id);
+await internal.drawers.delete(created.id);
 ```
 
-`dashboard.users.list({ storeUsers: true })` and `dashboard.rooms.list()` are read-only helpers to look up the UUIDs you'll need for `assignUser` / `create`.
+`internal.users.list({ storeUsers: true })` and `internal.rooms.list()` are read-only helpers to look up the UUIDs you'll need for `assignUser` / `create`.
 
 ### Drawer lifecycle (open / close)
 
 ```ts
-import type { CountRecord } from "@yerba-buena/flowhub-client/dashboard";
+import type { CountRecord } from "@yerba-buena/flowhub-client/internal";
 
 const openingCount: CountRecord = {
   total: 30_000,                   // cents — $300 starting cash
@@ -231,12 +258,12 @@ const openingCount: CountRecord = {
     twenties: 5, fifties: 0, hundreds: 0,
   },
 };
-const opened = await dashboard.drawers.open(drawerId, openingCount);
+const opened = await internal.drawers.open(drawerId, openingCount);
 
 // ... cash events happen over the course of the shift ...
 
 const closingCount: CountRecord = { /* counted cash at end of shift */ };
-const closed = await dashboard.drawers.close(drawerId, closingCount);
+const closed = await internal.drawers.close(drawerId, closingCount);
 ```
 
 The returned drawer reflects post-mutation state — `opened.counts.openedAt` is populated, `closed.counts.ClosedAt` is populated (note the capitalisation).
@@ -247,28 +274,28 @@ All four take the same shape: `{ total, reason, userId }`. `total` is cents.
 
 ```ts
 // $50 drop to the safe
-await dashboard.drawers.drop(drawerId, {
+await internal.drawers.drop(drawerId, {
   total: 5_000,
   reason: "Mid-shift drop",
   userId: cashierUserId,
 });
 
 // $20 pay-in from another register (replenishing change)
-await dashboard.drawers.payIn(drawerId, {
+await internal.drawers.payIn(drawerId, {
   total: 2_000,
   reason: "Change from main till",
   userId: cashierUserId,
 });
 
 // Tip out a vendor — recorded as negative revenue
-await dashboard.drawers.payOut(drawerId, {
+await internal.drawers.payOut(drawerId, {
   total: 1_500,
   reason: "Delivery driver tip",
   userId: cashierUserId,
 });
 
 // No-sale audit entry — total is typically 0
-await dashboard.drawers.pop(drawerId, {
+await internal.drawers.pop(drawerId, {
   total: 0,
   reason: "Customer asked for change",
   userId: cashierUserId,
@@ -280,12 +307,12 @@ Each mutation returns the full updated `Drawer`. The new event is appended to on
 ### Audit feed and tips
 
 ```ts
-const activities = await dashboard.drawers.listActivity(drawerId, {
+const activities = await internal.drawers.listActivity(drawerId, {
   startDate: "2026-05-01",
   endDate: "2026-05-31",
 });
 
-const tips = await dashboard.drawers.listTips(drawerCountId);
+const tips = await internal.drawers.listTips(drawerCountId);
 // note: keyed by drawer.counts.id, NOT the drawer's own id
 ```
 
@@ -294,10 +321,10 @@ const tips = await dashboard.drawers.listTips(drawerCountId);
 The headline feature for anyone integrating Flowhub into a cash-management or reconciliation system. Polls `drawers.list()` on a cadence (default 5s, matching the dashboard), diffs each snapshot against the previous, and emits a typed `AsyncIterable<DrawerEvent>`.
 
 ```ts
-import { DrawerWatcher } from "@yerba-buena/flowhub-client/dashboard";
+import { DrawerWatcher } from "@yerba-buena/flowhub-client/internal";
 
 const watcher = new DrawerWatcher({
-  drawers: dashboard.drawers,
+  drawers: internal.drawers,
   intervalMs: 5_000,                       // default
   drawerIds: ["drawer-uuid-1"],            // optional filter
   emitInitial: false,                      // default: baseline silently
@@ -344,13 +371,13 @@ Stopping cleanly: `await watcher.stop()` sets a flag and aborts any in-flight sl
 
 ```ts
 // Pure URL builder — no network call. Useful for embedding in a UI.
-const url = dashboard.drawers.buildReceiptUrl({
+const url = internal.drawers.buildReceiptUrl({
   drawerCountId: counts.id,        // counts.id, NOT drawer.id
   kind: "open",                    // "open" | "close" | "drop" | "pop" | "payin" | "payout"
 });
 
 // Fetch the PDF bytes.
-const { data, contentType, filename } = await dashboard.drawers.downloadReceipt({
+const { data, contentType, filename } = await internal.drawers.downloadReceipt({
   drawerCountId: counts.id,
   kind: "drop",
   eventId: "drop-uuid",            // required for drop/pop/payin/payout, omitted for open/close
@@ -374,10 +401,10 @@ import {
   FlowhubAuthError,
   FlowhubRateLimitError,
   FlowhubNotFoundError,
-} from "@yerba-buena/flowhub-client/dashboard";
+} from "@yerba-buena/flowhub-client/internal";
 
 try {
-  const { data } = await dashboard.reports.downloadAccounting({ /* ... */ });
+  const { data } = await internal.reports.downloadAccounting({ /* ... */ });
 } catch (err) {
   if (err instanceof FlowhubAuthError) {
     // Login failed — credentials may be wrong, expired, or the service account
