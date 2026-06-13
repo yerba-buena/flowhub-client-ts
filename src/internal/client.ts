@@ -15,6 +15,16 @@ export interface FlowhubInternalClientConfig {
 	readonly storeId?: string | undefined;
 	readonly baseUrl?: string | undefined;
 	readonly timeout?: number | undefined;
+	/**
+	 * Custom `fetch` implementation used for all outbound requests. Defaults to
+	 * `globalThis.fetch`.
+	 *
+	 * Extension point for SSRF-safe egress: pass a `fetch` wired to a connection
+	 * layer you control (e.g. an `undici` `Agent` with a pinned `connect.lookup`)
+	 * to resolve-validate-and-pin the destination IP and close the DNS-rebinding
+	 * window. See the README for a recipe.
+	 */
+	readonly fetchFn?: typeof fetch | undefined;
 }
 
 export class FlowhubInternalClient {
@@ -39,6 +49,7 @@ export class FlowhubInternalClient {
 		const http = new InternalHttp({
 			baseUrl: config.baseUrl ?? DEFAULT_INTERNAL_BASE_URL,
 			timeout: config.timeout ?? DEFAULT_TIMEOUT_MS,
+			fetchFn: config.fetchFn,
 		});
 		const auth = new SessionAuth({ email: config.email, password: config.password }, http);
 		this.reports = new ReportsResource(http, auth, config.storeId);

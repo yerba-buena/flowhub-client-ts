@@ -132,8 +132,56 @@ const flowhub = new FlowhubClient({
   baseUrl: "https://api.flowhub.co", // optional
   timeout: 30_000,                   // optional, default 30s
   retries: 3,                        // optional, default 3
+  fetchFn: customFetch,              // optional, defaults to globalThis.fetch
 });
 ```
+
+## Custom fetch / SSRF hardening
+
+Both `FlowhubClient` and `FlowhubInternalClient` accept a `fetchFn` option — a
+custom `fetch` implementation used for **all** outbound requests (including the
+Auth0 token endpoint). It defaults to `globalThis.fetch`. This is the supported
+extension point for proxies, instrumentation, test stubs, and — the motivating
+use case — **SSRF-safe egress**.
+
+> ⚠️ `fetchFn` is a *seam*, not a guarantee. The library does not validate
+> destinations for you; it hands you control of the connection layer so you can
+> enforce your own policy. The SSRF responsibility stays on your side.
+
+If your application lets a (even authenticated) user influence the `baseUrl`,
+validating the host's IP up front is not enough on its own: DNS can resolve to a
+different, internal IP by the time the request actually connects
+(**DNS rebinding**). The robust fix is to resolve once, validate the IP, and
+**pin the connection to that IP**. With a custom `fetchFn` you can attach an
+`undici` `Agent` whose `connect.lookup` returns only your validated address:
+
+```ts
+import { Agent, fetch as undiciFetch } from "undici";
+import { lookup as dnsLookup } from "node:dns";
+
+// Resolve + validate up front (https-only, host allowlist, reject
+// private/loopback/link-local/metadata ranges), then pin to that IP.
+function makePinnedFetch(validatedIp: string): typeof fetch {
+  const agent = new Agent({
+    connect: {
+      lookup: (_hostname, _opts, cb) => cb(null, validatedIp, 4),
+    },
+  });
+  return ((url, init) =>
+    undiciFetch(url, { ...init, dispatcher: agent })) as typeof fetch;
+}
+
+const flowhub = new FlowhubClient({
+  clientId: process.env.FLOWHUB_CLIENT_ID!,
+  apiKey: process.env.FLOWHUB_API_KEY!,
+  baseUrl: userSuppliedUrl, // already passed your https-only + IP-denylist check
+  fetchFn: makePinnedFetch(validatedIp),
+});
+```
+
+The same `fetchFn` option is available on `FlowhubInternalClient`. A `fetch`
+wrapper is also the seam for injecting a custom `http.Agent` / `undici`
+dispatcher, an egress proxy, request logging, or a mock in tests.
 
 ## Issues
 

@@ -113,8 +113,15 @@ const internal = new FlowhubInternalClient({
   storeId: process.env.FLOWHUB_STORE_ID,              // optional default
   baseUrl: "https://api.flowhub.com",                 // optional, default shown
   timeout: 30_000,                                    // optional, default 30s
+  fetchFn: customFetch,                               // optional, defaults to globalThis.fetch
 });
 ```
+
+`fetchFn` is a custom `fetch` used for all outbound requests — the seam for
+proxies, instrumentation, test stubs, and SSRF-safe egress (e.g. an `undici`
+`Agent` with a pinned `connect.lookup` to close the DNS-rebinding window). See
+the [main README's "Custom fetch / SSRF hardening" section](../../README.md#custom-fetch--ssrf-hardening)
+for a recipe.
 
 ## Usage
 
