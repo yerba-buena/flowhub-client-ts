@@ -179,6 +179,40 @@ export class ReportsResource {
 		return this.downloadReport("inventory-levels", params);
 	}
 
+	/**
+	 * Convenience: Inventory activity — the per-SKU movement / audit log
+	 * (sales, imports, adjustments, transfers) with quantity deltas and the
+	 * employee responsible. This is the report behind the dashboard's
+	 * Inventory → "Log" tab. Filter to a single SKU client-side, or narrow the
+	 * date range. Read-only / after-the-fact; not a live feed.
+	 */
+	async downloadInventoryActivity(params: CommonReportParams): Promise<ReportDownload> {
+		return this.downloadReport("inventory-activity", params);
+	}
+
+	/**
+	 * Convenience: Product activity — history of changes to product-catalog
+	 * records over a date range. Complements `downloadInventoryActivity` (which
+	 * tracks physical stock movement) by tracking catalog-level edits.
+	 */
+	async downloadProductActivity(params: CommonReportParams): Promise<ReportDownload> {
+		return this.downloadReport("product-activity", params);
+	}
+
+	/** Convenience: Deals usage — redemptions/usage of deals over a date range. */
+	async downloadDealsUsage(params: CommonReportParams): Promise<ReportDownload> {
+		return this.downloadReport("deals-usage", params);
+	}
+
+	/**
+	 * Convenience: Deals full details — the configured deals catalog with their
+	 * full configuration. Read-only; there is no public or (yet) reverse-engineered
+	 * write path for creating/editing deals.
+	 */
+	async downloadDealsFullDetails(params: CommonReportParams): Promise<ReportDownload> {
+		return this.downloadReport("deals-full-details", params);
+	}
+
 	private fallbackFilename(reportId: string, params: ReportParams): string {
 		const parts = [reportId];
 		if (typeof params.start_date === "string") parts.push(String(params.start_date));

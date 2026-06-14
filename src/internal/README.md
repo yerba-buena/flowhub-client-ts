@@ -155,7 +155,25 @@ await internal.reports.downloadEndOfDay({ start_date, end_date, store_id });
 await internal.reports.downloadTransactions({ start_date, end_date, store_id });
 await internal.reports.downloadInventorySnapshot({ store_id });
 await internal.reports.downloadInventoryLevels({ store_id });
+
+// Inventory movement / audit log and product-catalog change history
+await internal.reports.downloadInventoryActivity({ start_date, end_date, store_id });
+await internal.reports.downloadProductActivity({ start_date, end_date, store_id });
+
+// Deals (read-only)
+await internal.reports.downloadDealsUsage({ start_date, end_date, store_id });
+await internal.reports.downloadDealsFullDetails({ start_date, end_date, store_id });
 ```
+
+> **Interim read paths for the Inventory-Log and Deals feature requests**
+> ([#6](https://github.com/yerba-buena/flowhub-client-ts/issues/6),
+> [#9](https://github.com/yerba-buena/flowhub-client-ts/issues/9)): these CSV
+> reports give *after-the-fact* visibility today. The live structured operations
+> the dashboard performs (a filterable per-SKU log, and creating/editing
+> products, inventory batches, and deals) are reverse-engineering targets still
+> awaiting a HAR capture — see the discovery runbooks in
+> [`docs/`](../../docs/): `product-inventory-discovery.md` and
+> `deals-discovery.md`.
 
 ### Store scoping
 
