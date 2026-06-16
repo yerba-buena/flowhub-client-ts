@@ -17,6 +17,14 @@ Anything that isn't in Flowhub's public API but is reachable by reverse-engineer
 
 The name is `internal` (not `dashboard`) because it's about the *kind* of API — Flowhub's private internals — not the one screen it happens to be reachable from.
 
+> 📖 **Endpoint reference:** because these endpoints aren't in Flowhub's public
+> docs (or the [`flowhub-api-docs`](https://github.com/yerba-buena/flowhub-api-docs)
+> mirror, which only covers the public API), the reverse-engineered transport,
+> auth, and per-resource operation catalog are documented in
+> [`docs/internal-api-reference.md`](../../docs/internal-api-reference.md), with
+> per-feature findings in the [`docs/*-discovery.md`](../../docs/) files. This
+> README is the **usage** guide; that reference is the **API** map.
+
 ## How this differs from the main client
 
 | | `FlowhubClient` (`/`) | `FlowhubInternalClient` (`/internal`) |
