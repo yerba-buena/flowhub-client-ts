@@ -413,6 +413,37 @@ await writeFile(filename ?? "drop.pdf", data);
 
 The `kind` values use lowercase `payin` / `payout` to match Flowhub's URL paths — different from the camelCase `cash.payIn` / `cash.payOut` event kinds emitted by the watcher.
 
+## Employees / staff roster
+
+The `employees` resource exposes the staff roster — most importantly the
+deterministic **`email → id`** mapping, where `id` is the user UUID expected to
+equal the `budtenderId` carried on `Sale` records. (Backed by the dashboard's
+`filteredUsers` GraphQL field — see [`docs/employees-discovery.md`](../../docs/employees-discovery.md).)
+
+```ts
+// One page (defaults to active employees; applies the client's default storeId)
+const page = await internal.employees.list({ search: "alex", limit: 20 });
+
+// The whole roster (auto-paginated) — handy for building an email index
+const everyone = await internal.employees.listAll({ status: "all" });
+const byEmail = new Map(everyone.map((e) => [e.email.toLowerCase(), e]));
+const budtenderId = byEmail.get("alex@example.com")?.id;
+
+// A single employee by user UUID
+const emp = await internal.employees.get("2a806c5b-9729-46b0-a8cd-bc290afb51ce");
+```
+
+Each `Employee` has `id`, `name` (`"First Last"`), `firstName`, `lastName`,
+`email`, `phoneNumber`, `status`, `active`, `isInternal`, `activeStoreId`,
+`role` (`{ id, name }`), `storeIds`, and `stores`. The dashboard's full user
+payload also includes an `apiKeys` block (containing secrets) — that is
+deliberately **not** selected or surfaced.
+
+> **`id` vs `budtenderId`:** the resource assumes the employee `id` equals
+> `Sale.budtenderId`. This matches Flowhub's data model but should be
+> spot-checked once against a real sale (issue
+> [#10](https://github.com/yerba-buena/flowhub-client-ts/issues/10)).
+
 ## Token lifecycle
 
 The client logs in lazily on first use, caches the session token in memory, and refreshes it 5 minutes before expiry (~4-hour token lifetime). If a request returns 401, the client invalidates the cached token, re-logs in once, and retries the request. If the retry also 401s, it throws `FlowhubAuthError` — no infinite loops.

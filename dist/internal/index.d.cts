@@ -554,6 +554,101 @@ declare class DrawersResource {
 }
 
 /**
+ * Types for the employees (staff roster) resource.
+ *
+ * Backed by the Flowhub dashboard's `filteredUsers` GraphQL field (operations
+ * `GetAllUsers` for the paginated roster and `GetOneUser` for a single record).
+ * Reverse-engineered from the dashboard's Employees screen — see
+ * `docs/employees-discovery.md`.
+ *
+ * Purpose: provide a deterministic `email → id` mapping. The employee `id` is a
+ * UUID that is expected to equal the `budtenderId` carried on `Sale` records
+ * (see the note on {@link Employee.id}). Only roster-relevant fields are
+ * exposed; the dashboard's full user payload also includes an `apiKeys` block
+ * (containing secrets) which is deliberately **not** selected or surfaced here.
+ */
+/** Observed value is `active`; `inactive` is the expected complement. Permissive. */
+type EmployeeStatus = "active" | "inactive" | (string & {});
+type EmployeeOrderBy = "firstName" | "lastName" | "email" | "createdAt" | (string & {});
+type OrderDirection = "asc" | "desc";
+interface EmployeeRole {
+    readonly id: string;
+    readonly name: string;
+}
+interface EmployeeStore {
+    readonly id: string;
+    readonly name: string;
+}
+interface Employee {
+    /**
+     * User UUID. Expected to equal `Sale.budtenderId` — this is the whole point
+     * of the resource (bridging YBAM email identity to the seller on a sale).
+     * The equality is asserted by the Flowhub data model but should be spot-checked
+     * against a real `Sale` once, per issue #10's acceptance criteria.
+     */
+    readonly id: string;
+    /** `"First Last"` (trimmed). Matches the `Sale.budtender` display name. */
+    readonly name: string;
+    readonly firstName: string | null;
+    readonly lastName: string | null;
+    /** The bridge to YBAM identity. */
+    readonly email: string;
+    readonly phoneNumber: string | null;
+    readonly status: EmployeeStatus;
+    /** Convenience: `status === "active"`. */
+    readonly active: boolean;
+    readonly isInternal: boolean;
+    readonly activeStoreId: string | null;
+    readonly role: EmployeeRole | null;
+    /** Store UUIDs this employee belongs to (from `stores[].id`). */
+    readonly storeIds: ReadonlyArray<string>;
+    readonly stores: ReadonlyArray<EmployeeStore>;
+}
+interface ListEmployeesParams {
+    /** Scope to a single store/location UUID. Defaults to the client's storeId. */
+    readonly storeId?: string;
+    /** Free-text search (matches name/email as in the dashboard search box). */
+    readonly search?: string;
+    /** Defaults to `"active"`. Pass `"all"` to include inactive employees. */
+    readonly status?: EmployeeStatus | "all";
+    readonly roleId?: string;
+    readonly limit?: number;
+    readonly offset?: number;
+    readonly orderBy?: EmployeeOrderBy;
+    readonly orderDirection?: OrderDirection;
+}
+
+/**
+ * Read-only access to the Flowhub employee/staff roster, for resolving the
+ * `email → id` mapping (where `id` is the seller's `budtenderId` on sales).
+ *
+ * Backed by the dashboard's internal `filteredUsers` GraphQL field; requires
+ * dashboard credentials (not a public API key). Retries once on 401 by
+ * invalidating the cached session token.
+ */
+declare class EmployeesResource {
+    private readonly http;
+    private readonly auth;
+    private readonly defaultStoreId;
+    constructor(http: InternalHttp, auth: SessionAuth, defaultStoreId: string | undefined);
+    /**
+     * List one page of employees. Defaults to `status: "active"` and applies the
+     * client's default `storeId` when one isn't passed. Pass `limit`/`offset` to
+     * paginate, or use {@link listAll} to fetch the entire roster.
+     */
+    list(params?: ListEmployeesParams): Promise<Employee[]>;
+    /**
+     * Fetch the entire roster by auto-paginating `list()`. Useful for building an
+     * `email → employee` index in one call. `limit`/`offset` in `params` are
+     * ignored (pagination is managed internally).
+     */
+    listAll(params?: Omit<ListEmployeesParams, "limit" | "offset">): Promise<Employee[]>;
+    /** Fetch a single employee by their user UUID, or `null` if not found. */
+    get(id: string): Promise<Employee | null>;
+    private withAuthRetry;
+}
+
+/**
  * Downloads CSV reports from the Flowhub dashboard's internal analytics endpoints.
  *
  * All reports are GET requests at /analytics/<reportId> with query params.
@@ -598,6 +693,28 @@ declare class ReportsResource {
     downloadInventoryLevels(params?: {
         store_id?: string;
     } & ReportParams): Promise<ReportDownload>;
+    /**
+     * Convenience: Inventory activity — the per-SKU movement / audit log
+     * (sales, imports, adjustments, transfers) with quantity deltas and the
+     * employee responsible. This is the report behind the dashboard's
+     * Inventory → "Log" tab. Filter to a single SKU client-side, or narrow the
+     * date range. Read-only / after-the-fact; not a live feed.
+     */
+    downloadInventoryActivity(params: CommonReportParams): Promise<ReportDownload>;
+    /**
+     * Convenience: Product activity — history of changes to product-catalog
+     * records over a date range. Complements `downloadInventoryActivity` (which
+     * tracks physical stock movement) by tracking catalog-level edits.
+     */
+    downloadProductActivity(params: CommonReportParams): Promise<ReportDownload>;
+    /** Convenience: Deals usage — redemptions/usage of deals over a date range. */
+    downloadDealsUsage(params: CommonReportParams): Promise<ReportDownload>;
+    /**
+     * Convenience: Deals full details — the configured deals catalog with their
+     * full configuration. Read-only; there is no public or (yet) reverse-engineered
+     * write path for creating/editing deals.
+     */
+    downloadDealsFullDetails(params: CommonReportParams): Promise<ReportDownload>;
     private fallbackFilename;
 }
 
@@ -642,11 +759,22 @@ interface FlowhubInternalClientConfig {
     readonly storeId?: string | undefined;
     readonly baseUrl?: string | undefined;
     readonly timeout?: number | undefined;
+    /**
+     * Custom `fetch` implementation used for all outbound requests. Defaults to
+     * `globalThis.fetch`.
+     *
+     * Extension point for SSRF-safe egress: pass a `fetch` wired to a connection
+     * layer you control (e.g. an `undici` `Agent` with a pinned `connect.lookup`)
+     * to resolve-validate-and-pin the destination IP and close the DNS-rebinding
+     * window. See the README for a recipe.
+     */
+    readonly fetchFn?: typeof fetch | undefined;
 }
 declare class FlowhubInternalClient {
     readonly reports: ReportsResource;
     readonly drawers: DrawersResource;
     readonly users: UsersResource;
+    readonly employees: EmployeesResource;
     readonly rooms: RoomsResource;
     readonly storeId: string | undefined;
     private readonly config;
@@ -725,4 +853,4 @@ declare class DrawerWatcher {
  */
 declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListUsersParams, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListUsersParams, type OrderDirection, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };

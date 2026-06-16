@@ -1,6 +1,7 @@
 import { DEFAULT_TIMEOUT_MS } from "../constants.js";
 import { FlowhubError } from "../errors.js";
 import { DrawersResource } from "./cash-management.js";
+import { EmployeesResource } from "./employees.js";
 import { InternalHttp } from "./http.js";
 import { ReportsResource } from "./reports.js";
 import { RoomsResource } from "./rooms.js";
@@ -31,6 +32,7 @@ export class FlowhubInternalClient {
 	readonly reports: ReportsResource;
 	readonly drawers: DrawersResource;
 	readonly users: UsersResource;
+	readonly employees: EmployeesResource;
 	readonly rooms: RoomsResource;
 	readonly storeId: string | undefined;
 
@@ -55,6 +57,7 @@ export class FlowhubInternalClient {
 		this.reports = new ReportsResource(http, auth, config.storeId);
 		this.drawers = new DrawersResource(http, auth);
 		this.users = new UsersResource(http, auth);
+		this.employees = new EmployeesResource(http, auth, config.storeId);
 		this.rooms = new RoomsResource(http, auth);
 	}
 

@@ -468,6 +468,17 @@ interface FlowhubClientOptions {
     readonly baseUrl?: string | undefined;
     readonly timeout?: number | undefined;
     readonly retries?: number | undefined;
+    /**
+     * Custom `fetch` implementation used for all outbound requests (main API and
+     * the Auth0 token endpoint). Defaults to `globalThis.fetch`.
+     *
+     * This is the extension point for SSRF-safe egress: pass a `fetch` wired to a
+     * connection layer you control (e.g. an `undici` `Agent` with a pinned
+     * `connect.lookup`) so you can resolve-validate-and-pin the destination IP and
+     * close the DNS-rebinding window. See the README's "Custom fetch / SSRF
+     * hardening" section for a recipe.
+     */
+    readonly fetchFn?: typeof fetch | undefined;
 }
 declare class FlowhubClient {
     readonly locations: LocationsResource;

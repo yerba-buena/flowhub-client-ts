@@ -509,13 +509,14 @@ var FlowhubClient = class _FlowhubClient {
       credentials,
       baseUrl: options.baseUrl,
       timeout: options.timeout,
-      retries: options.retries
+      retries: options.retries,
+      fetchFn: options.fetchFn
     });
     this.locations = new LocationsResource(this.http);
     this.inventory = new InventoryResource(this.http, locationId);
     this.orders = new OrdersResource(this.http);
     this.orderAhead = new OrderAheadResource(this.http);
-    this.authToken = new AuthTokenResource();
+    this.authToken = new AuthTokenResource(options.fetchFn);
   }
   /**
    * Returns a new client scoped to a specific location.
