@@ -37,6 +37,16 @@ export type {
 	UserStore,
 } from "./cash-management-types.js";
 export { DrawerWatcher, computeEvents } from "./drawer-watcher.js";
+export { EmployeesResource } from "./employees.js";
+export type {
+	Employee,
+	EmployeeOrderBy,
+	EmployeeRole,
+	EmployeeStatus,
+	EmployeeStore,
+	ListEmployeesParams,
+	OrderDirection,
+} from "./employees-types.js";
 export { RoomsResource } from "./rooms.js";
 export type {
 	CommonReportParams,

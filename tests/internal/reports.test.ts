@@ -310,6 +310,34 @@ describe("ReportsResource", () => {
 		expect(result.filename).toBe("inventory-snapshot.csv");
 	});
 
+	it.each([
+		["downloadInventoryActivity", "inventory-activity"],
+		["downloadProductActivity", "product-activity"],
+		["downloadDealsUsage", "deals-usage"],
+		["downloadDealsFullDetails", "deals-full-details"],
+	] as const)("%s hits /analytics/%s", async (method, reportId) => {
+		let capturedUrl = "";
+		server.use(
+			loginHandler(),
+			http.get(`${BASE_URL}/analytics/${reportId}`, ({ request }) => {
+				capturedUrl = request.url;
+				return new HttpResponse("col1,col2\nv1,v2\n", { status: 200 });
+			}),
+		);
+
+		const client = makeClient();
+		const result = await client.reports[method]({
+			start_date: "2026-06-01",
+			end_date: "2026-06-14",
+			store_id: "store-xyz",
+		});
+
+		expect(capturedUrl).toContain(`/analytics/${reportId}`);
+		expect(capturedUrl).toContain("start_date=2026-06-01");
+		expect(capturedUrl).toContain("store_id=store-xyz");
+		expect(result.data.toString("utf-8")).toBe("col1,col2\nv1,v2\n");
+	});
+
 	it("concurrent downloads share a single login", async () => {
 		const loginCounter = { count: 0 };
 		server.use(

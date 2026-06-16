@@ -199,7 +199,7 @@ For CSV report downloads and cash-management (drawers, drop / pay-in / pay-out e
 import { FlowhubInternalClient } from "@yerba-buena/flowhub-client/internal";
 ```
 
-See [`src/internal/README.md`](./src/internal/README.md) for the full guide, security guidance, and stability caveats.
+See [`src/internal/README.md`](./src/internal/README.md) for the full usage guide, security guidance, and stability caveats, and [`docs/internal-api-reference.md`](./docs/internal-api-reference.md) for the reverse-engineered endpoint/operation reference — the unofficial counterpart to the [public API docs mirror](https://github.com/yerba-buena/flowhub-api-docs), which only covers Flowhub's documented API.
 
 > Previously called the "dashboard client" (`@yerba-buena/flowhub-client/dashboard`). That import path and the old names still work but are deprecated — see [Breaking changes](#breaking-changes--migration) below.
 

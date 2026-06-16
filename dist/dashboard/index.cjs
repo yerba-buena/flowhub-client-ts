@@ -24,6 +24,7 @@ __export(dashboard_exports, {
   DEFAULT_INTERNAL_BASE_URL: () => DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher: () => DrawerWatcher,
   DrawersResource: () => DrawersResource,
+  EmployeesResource: () => EmployeesResource,
   FlowhubAuthError: () => FlowhubAuthError,
   FlowhubDashboardClient: () => FlowhubDashboardClient,
   FlowhubError: () => FlowhubError,
@@ -634,6 +635,152 @@ var DrawersResource = class {
   }
 };
 
+// src/internal/employees.ts
+var FILTERED_USERS_FIELDS = `
+    id
+    email
+    phoneNumber
+    status
+    isInternal
+    activeStoreId
+    meta
+    roleId
+    role { id name }
+    stores { id name }
+`;
+var GET_ALL_USERS_QUERY = `
+query GetAllUsers(
+  $storeId: ID
+  $search: String
+  $status: UserStatus
+  $roleId: ID
+  $limit: Int
+  $offset: Int
+  $orderBy: UsersOrderBy
+  $orderDirection: OrderDirection
+) {
+  users: filteredUsers(
+    usersParams: {
+      storeId: $storeId
+      search: $search
+      status: $status
+      roleId: $roleId
+      limit: $limit
+      offset: $offset
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+    }
+  ) {
+${FILTERED_USERS_FIELDS}
+  }
+}
+`;
+var GET_ONE_USER_QUERY = `
+query GetOneUser($id: ID) {
+  users: filteredUsers(usersParams: { userId: $id, status: all }) {
+${FILTERED_USERS_FIELDS}
+  }
+}
+`;
+var LIST_ALL_PAGE_SIZE = 100;
+function toEmployee(u) {
+  const firstName = u.meta?.firstName ?? null;
+  const lastName = u.meta?.lastName ?? null;
+  const name = [firstName, lastName].filter(Boolean).join(" ").trim();
+  const stores = u.stores ?? [];
+  return {
+    id: u.id,
+    name,
+    firstName,
+    lastName,
+    email: u.email,
+    phoneNumber: u.phoneNumber ?? null,
+    status: u.status,
+    active: u.status === "active",
+    isInternal: u.isInternal,
+    activeStoreId: u.activeStoreId ?? null,
+    role: u.role ?? null,
+    storeIds: stores.map((s) => s.id),
+    stores
+  };
+}
+var EmployeesResource = class {
+  constructor(http, auth, defaultStoreId) {
+    this.http = http;
+    this.auth = auth;
+    this.defaultStoreId = defaultStoreId;
+  }
+  http;
+  auth;
+  defaultStoreId;
+  /**
+   * List one page of employees. Defaults to `status: "active"` and applies the
+   * client's default `storeId` when one isn't passed. Pass `limit`/`offset` to
+   * paginate, or use {@link listAll} to fetch the entire roster.
+   */
+  async list(params = {}) {
+    const variables = {
+      storeId: params.storeId ?? this.defaultStoreId,
+      search: params.search ?? null,
+      status: params.status ?? "active",
+      roleId: params.roleId,
+      limit: params.limit,
+      offset: params.offset,
+      orderBy: params.orderBy,
+      orderDirection: params.orderDirection
+    };
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        { operationName: "GetAllUsers", variables, query: GET_ALL_USERS_QUERY },
+        token
+      )
+    );
+    return data.users.map(toEmployee);
+  }
+  /**
+   * Fetch the entire roster by auto-paginating `list()`. Useful for building an
+   * `email → employee` index in one call. `limit`/`offset` in `params` are
+   * ignored (pagination is managed internally).
+   */
+  async listAll(params = {}) {
+    const all = [];
+    let offset = 0;
+    for (; ; ) {
+      const page = await this.list({ ...params, limit: LIST_ALL_PAGE_SIZE, offset });
+      all.push(...page);
+      if (page.length < LIST_ALL_PAGE_SIZE) break;
+      offset += LIST_ALL_PAGE_SIZE;
+    }
+    return all;
+  }
+  /** Fetch a single employee by their user UUID, or `null` if not found. */
+  async get(id) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        { operationName: "GetOneUser", variables: { id }, query: GET_ONE_USER_QUERY },
+        token
+      )
+    );
+    const user = data.users[0];
+    return user ? toEmployee(user) : null;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/internal/http.ts
 var InternalHttp = class {
   /** Normalised base URL (trailing slashes stripped). Exposed so resources can build receipt-style URLs. */
@@ -877,6 +1024,36 @@ var ReportsResource = class {
   async downloadInventoryLevels(params = {}) {
     return this.downloadReport("inventory-levels", params);
   }
+  /**
+   * Convenience: Inventory activity — the per-SKU movement / audit log
+   * (sales, imports, adjustments, transfers) with quantity deltas and the
+   * employee responsible. This is the report behind the dashboard's
+   * Inventory → "Log" tab. Filter to a single SKU client-side, or narrow the
+   * date range. Read-only / after-the-fact; not a live feed.
+   */
+  async downloadInventoryActivity(params) {
+    return this.downloadReport("inventory-activity", params);
+  }
+  /**
+   * Convenience: Product activity — history of changes to product-catalog
+   * records over a date range. Complements `downloadInventoryActivity` (which
+   * tracks physical stock movement) by tracking catalog-level edits.
+   */
+  async downloadProductActivity(params) {
+    return this.downloadReport("product-activity", params);
+  }
+  /** Convenience: Deals usage — redemptions/usage of deals over a date range. */
+  async downloadDealsUsage(params) {
+    return this.downloadReport("deals-usage", params);
+  }
+  /**
+   * Convenience: Deals full details — the configured deals catalog with their
+   * full configuration. Read-only; there is no public or (yet) reverse-engineered
+   * write path for creating/editing deals.
+   */
+  async downloadDealsFullDetails(params) {
+    return this.downloadReport("deals-full-details", params);
+  }
   fallbackFilename(reportId, params) {
     const parts = [reportId];
     if (typeof params.start_date === "string") parts.push(String(params.start_date));
@@ -1085,6 +1262,7 @@ var FlowhubInternalClient = class _FlowhubInternalClient {
   reports;
   drawers;
   users;
+  employees;
   rooms;
   storeId;
   config;
@@ -1099,12 +1277,14 @@ var FlowhubInternalClient = class _FlowhubInternalClient {
     this.storeId = config.storeId;
     const http = new InternalHttp({
       baseUrl: config.baseUrl ?? DEFAULT_INTERNAL_BASE_URL,
-      timeout: config.timeout ?? DEFAULT_TIMEOUT_MS
+      timeout: config.timeout ?? DEFAULT_TIMEOUT_MS,
+      fetchFn: config.fetchFn
     });
     const auth = new SessionAuth({ email: config.email, password: config.password }, http);
     this.reports = new ReportsResource(http, auth, config.storeId);
     this.drawers = new DrawersResource(http, auth);
     this.users = new UsersResource(http, auth);
+    this.employees = new EmployeesResource(http, auth, config.storeId);
     this.rooms = new RoomsResource(http, auth);
   }
   /** Returns a new client scoped to the given storeId for default report params. */
@@ -1292,6 +1472,7 @@ var DEFAULT_DASHBOARD_BASE_URL = DEFAULT_INTERNAL_BASE_URL;
   DEFAULT_INTERNAL_BASE_URL,
   DrawerWatcher,
   DrawersResource,
+  EmployeesResource,
   FlowhubAuthError,
   FlowhubDashboardClient,
   FlowhubError,

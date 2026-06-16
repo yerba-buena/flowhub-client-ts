@@ -17,6 +17,14 @@ Anything that isn't in Flowhub's public API but is reachable by reverse-engineer
 
 The name is `internal` (not `dashboard`) because it's about the *kind* of API — Flowhub's private internals — not the one screen it happens to be reachable from.
 
+> 📖 **Endpoint reference:** because these endpoints aren't in Flowhub's public
+> docs (or the [`flowhub-api-docs`](https://github.com/yerba-buena/flowhub-api-docs)
+> mirror, which only covers the public API), the reverse-engineered transport,
+> auth, and per-resource operation catalog are documented in
+> [`docs/internal-api-reference.md`](../../docs/internal-api-reference.md), with
+> per-feature findings in the [`docs/*-discovery.md`](../../docs/) files. This
+> README is the **usage** guide; that reference is the **API** map.
+
 ## How this differs from the main client
 
 | | `FlowhubClient` (`/`) | `FlowhubInternalClient` (`/internal`) |
@@ -155,7 +163,25 @@ await internal.reports.downloadEndOfDay({ start_date, end_date, store_id });
 await internal.reports.downloadTransactions({ start_date, end_date, store_id });
 await internal.reports.downloadInventorySnapshot({ store_id });
 await internal.reports.downloadInventoryLevels({ store_id });
+
+// Inventory movement / audit log and product-catalog change history
+await internal.reports.downloadInventoryActivity({ start_date, end_date, store_id });
+await internal.reports.downloadProductActivity({ start_date, end_date, store_id });
+
+// Deals (read-only)
+await internal.reports.downloadDealsUsage({ start_date, end_date, store_id });
+await internal.reports.downloadDealsFullDetails({ start_date, end_date, store_id });
 ```
+
+> **Interim read paths for the Inventory-Log and Deals feature requests**
+> ([#6](https://github.com/yerba-buena/flowhub-client-ts/issues/6),
+> [#9](https://github.com/yerba-buena/flowhub-client-ts/issues/9)): these CSV
+> reports give *after-the-fact* visibility today. The live structured operations
+> the dashboard performs (a filterable per-SKU log, and creating/editing
+> products, inventory batches, and deals) are reverse-engineering targets still
+> awaiting a HAR capture — see the discovery runbooks in
+> [`docs/`](../../docs/): `product-inventory-discovery.md` and
+> `deals-discovery.md`.
 
 ### Store scoping
 
@@ -394,6 +420,37 @@ await writeFile(filename ?? "drop.pdf", data);
 ```
 
 The `kind` values use lowercase `payin` / `payout` to match Flowhub's URL paths — different from the camelCase `cash.payIn` / `cash.payOut` event kinds emitted by the watcher.
+
+## Employees / staff roster
+
+The `employees` resource exposes the staff roster — most importantly the
+deterministic **`email → id`** mapping, where `id` is the user UUID expected to
+equal the `budtenderId` carried on `Sale` records. (Backed by the dashboard's
+`filteredUsers` GraphQL field — see [`docs/employees-discovery.md`](../../docs/employees-discovery.md).)
+
+```ts
+// One page (defaults to active employees; applies the client's default storeId)
+const page = await internal.employees.list({ search: "alex", limit: 20 });
+
+// The whole roster (auto-paginated) — handy for building an email index
+const everyone = await internal.employees.listAll({ status: "all" });
+const byEmail = new Map(everyone.map((e) => [e.email.toLowerCase(), e]));
+const budtenderId = byEmail.get("alex@example.com")?.id;
+
+// A single employee by user UUID
+const emp = await internal.employees.get("2a806c5b-9729-46b0-a8cd-bc290afb51ce");
+```
+
+Each `Employee` has `id`, `name` (`"First Last"`), `firstName`, `lastName`,
+`email`, `phoneNumber`, `status`, `active`, `isInternal`, `activeStoreId`,
+`role` (`{ id, name }`), `storeIds`, and `stores`. The dashboard's full user
+payload also includes an `apiKeys` block (containing secrets) — that is
+deliberately **not** selected or surfaced.
+
+> **`id` vs `budtenderId`:** the resource assumes the employee `id` equals
+> `Sale.budtenderId`. This matches Flowhub's data model but should be
+> spot-checked once against a real sale (issue
+> [#10](https://github.com/yerba-buena/flowhub-client-ts/issues/10)).
 
 ## Token lifecycle
 
