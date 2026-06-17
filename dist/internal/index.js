@@ -1071,6 +1071,198 @@ var RoomsResource = class {
   }
 };
 
+// src/internal/sales.ts
+var SALE_FIELDS = `
+    id
+    source
+    receiptId
+    storeId
+    storeName
+    purchaseType
+    completedAt
+    editedCount
+    soldBy { id meta }
+    drawer { id name }
+    totalPreTaxPrice
+    totalPostTaxPrice
+    totalItemPrice
+    totalDiscounts
+    totalTaxes
+    totalFees
+    totalPrice
+    loyalty { pointsEarned pointsSpent }
+    items {
+      id
+      inventoryId
+      categoryId
+      brand
+      productName
+      variantName
+      sku
+      regulatoryId
+      isSoldByWeight
+      quantity
+      preTaxPrice
+      postTaxPrice
+      totalItemCost
+      totalPrice
+      totalDiscounts
+      totalTaxes
+    }
+`;
+var GET_SALES_QUERY = `
+query GetSales(
+  $startDate: Date
+  $endDate: Date
+  $limit: Int
+  $offset: Int
+  $id: Uuid
+  $receiptId: ID
+  $drawerIds: [ID]
+  $employeeIds: [ID]
+  $reportingStatus: SalesReportingStatus
+  $customerType: SalesCustomerType
+  $paymentMethod: PaymentMethod
+  $source: String
+  $orderBy: SalesOrderBy
+  $orderDirection: OrderDirection
+  $shouldIncludeAllStores: Boolean
+  $search: String
+) {
+  sales: filteredSales(
+    salesParams: {
+      startDate: $startDate
+      endDate: $endDate
+      limit: $limit
+      offset: $offset
+      id: $id
+      receiptId: $receiptId
+      drawerIds: $drawerIds
+      employeeIds: $employeeIds
+      reportingStatus: $reportingStatus
+      customerType: $customerType
+      paymentMethod: $paymentMethod
+      source: $source
+      orderBy: $orderBy
+      orderDirection: $orderDirection
+      shouldIncludeAllStores: $shouldIncludeAllStores
+      search: $search
+    }
+  ) {
+${SALE_FIELDS}
+  }
+}
+`;
+var LIST_ALL_PAGE_SIZE2 = 100;
+function toSale(s) {
+  const firstName = s.soldBy?.meta?.firstName ?? null;
+  const lastName = s.soldBy?.meta?.lastName ?? null;
+  const soldBy = s.soldBy ? {
+    id: s.soldBy.id,
+    firstName,
+    lastName,
+    name: [firstName, lastName].filter(Boolean).join(" ").trim()
+  } : null;
+  const items = s.items ?? [];
+  return {
+    id: s.id,
+    source: s.source ?? null,
+    receiptId: s.receiptId ?? null,
+    storeId: s.storeId,
+    storeName: s.storeName ?? null,
+    purchaseType: s.purchaseType,
+    completedAt: s.completedAt,
+    editedCount: s.editedCount ?? null,
+    soldBy,
+    drawer: s.drawer ?? null,
+    totalPreTaxPrice: s.totalPreTaxPrice,
+    totalPostTaxPrice: s.totalPostTaxPrice,
+    totalItemPrice: s.totalItemPrice,
+    totalDiscounts: s.totalDiscounts,
+    totalTaxes: s.totalTaxes,
+    totalFees: s.totalFees,
+    totalPrice: s.totalPrice,
+    loyalty: s.loyalty ?? null,
+    items,
+    itemCount: items.reduce((sum, it) => sum + (it.quantity ?? 0), 0)
+  };
+}
+var SalesResource = class {
+  constructor(http, auth) {
+    this.http = http;
+    this.auth = auth;
+  }
+  http;
+  auth;
+  /** List one page of sales within a date range. `startDate`/`endDate` required. */
+  async list(params) {
+    const variables = {
+      startDate: params.startDate,
+      endDate: params.endDate,
+      limit: params.limit,
+      offset: params.offset,
+      employeeIds: params.employeeIds,
+      drawerIds: params.drawerIds,
+      reportingStatus: params.reportingStatus ?? "all",
+      customerType: params.customerType,
+      paymentMethod: params.paymentMethod,
+      source: params.source,
+      orderBy: params.orderBy ?? "completedAt",
+      orderDirection: params.orderDirection ?? "desc",
+      shouldIncludeAllStores: params.shouldIncludeAllStores ?? false,
+      search: params.search ?? null
+    };
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        { operationName: "GetSales", variables, query: GET_SALES_QUERY },
+        token
+      )
+    );
+    return data.sales.map(toSale);
+  }
+  /**
+   * Fetch every sale in the range by auto-paginating `list()`. `limit`/`offset`
+   * in `params` are ignored (managed internally).
+   */
+  async listAll(params) {
+    const all = [];
+    let offset = 0;
+    for (; ; ) {
+      const page = await this.list({ ...params, limit: LIST_ALL_PAGE_SIZE2, offset });
+      all.push(...page);
+      if (page.length < LIST_ALL_PAGE_SIZE2) break;
+      offset += LIST_ALL_PAGE_SIZE2;
+    }
+    return all;
+  }
+  /** Fetch a single sale by its UUID, or `null` if not found. */
+  async get(id) {
+    const data = await this.withAuthRetry(
+      (token) => this.http.graphql(
+        { operationName: "GetSales", variables: { id }, query: GET_SALES_QUERY },
+        token
+      )
+    );
+    const sale = data.sales[0];
+    return sale ? toSale(sale) : null;
+  }
+  async withAuthRetry(fn) {
+    const tryOnce = async () => {
+      const token = await this.auth.getToken();
+      return fn(token);
+    };
+    try {
+      return await tryOnce();
+    } catch (err) {
+      if (err instanceof FlowhubAuthError) {
+        this.auth.invalidate();
+        return tryOnce();
+      }
+      throw err;
+    }
+  }
+};
+
 // src/internal/session-auth.ts
 var REFRESH_MARGIN_SECONDS = 5 * 60;
 var LOGIN_QUERY = `
@@ -1223,6 +1415,7 @@ var FlowhubInternalClient = class _FlowhubInternalClient {
   drawers;
   users;
   employees;
+  sales;
   rooms;
   storeId;
   config;
@@ -1245,6 +1438,7 @@ var FlowhubInternalClient = class _FlowhubInternalClient {
     this.drawers = new DrawersResource(http, auth);
     this.users = new UsersResource(http, auth);
     this.employees = new EmployeesResource(http, auth, config.storeId);
+    this.sales = new SalesResource(http, auth);
     this.rooms = new RoomsResource(http, auth);
   }
   /** Returns a new client scoped to the given storeId for default report params. */
@@ -1434,6 +1628,7 @@ export {
   FlowhubRateLimitError,
   FlowhubValidationError,
   RoomsResource,
+  SalesResource,
   UsersResource,
   computeEvents
 };

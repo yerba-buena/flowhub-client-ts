@@ -48,6 +48,19 @@ export type {
 	OrderDirection,
 } from "./employees-types.js";
 export { RoomsResource } from "./rooms.js";
+export { SalesResource } from "./sales.js";
+export type {
+	ListSalesParams,
+	PurchaseType,
+	Sale,
+	SaleDrawerRef,
+	SaleItem,
+	SaleLoyalty,
+	SaleSeller,
+	SalesCustomerType,
+	SalesOrderBy,
+	SalesReportingStatus,
+} from "./sales-types.js";
 export type {
 	CommonReportParams,
 	DateRangeParams,
