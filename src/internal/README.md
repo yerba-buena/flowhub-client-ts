@@ -447,10 +447,46 @@ Each `Employee` has `id`, `name` (`"First Last"`), `firstName`, `lastName`,
 payload also includes an `apiKeys` block (containing secrets) — that is
 deliberately **not** selected or surfaced.
 
-> **`id` vs `budtenderId`:** the resource assumes the employee `id` equals
-> `Sale.budtenderId`. This matches Flowhub's data model but should be
-> spot-checked once against a real sale (issue
-> [#10](https://github.com/yerba-buena/flowhub-client-ts/issues/10)).
+> **`id` vs sale seller id:** ✅ verified — the employee `id` equals the
+> `Sale.soldBy.id` returned by the `sales` resource (and the public API's
+> `Sale.budtenderId`), so `employees.get(sale.soldBy.id)` resolves a seller's
+> email. (issue [#10](https://github.com/yerba-buena/flowhub-client-ts/issues/10)).
+
+## Sales
+
+The `sales` resource exposes completed sales from the dashboard's internal
+`filteredSales` field. Unlike the public orders/sales API it carries
+`soldBy { id }` — the seller's user UUID, equal to the `employees` id — and
+accepts an **`employeeIds`** filter, so it's purpose-built for per-budtender
+views (e.g. a Sales Performance app). Money is integer cents.
+(See [`docs/sales-discovery.md`](../../docs/sales-discovery.md).)
+
+```ts
+// All of one budtender's sales for a date range, then derive AOV / UPT
+const sales = await internal.sales.listAll({
+  startDate: "2026-06-01",
+  endDate: "2026-06-17",
+  employeeIds: [budtenderId], // the employees / soldBy.id
+});
+
+const count = sales.length;
+const aovCents = count ? Math.round(sales.reduce((s, x) => s + x.totalPrice, 0) / count) : 0;
+const upt = count ? sales.reduce((s, x) => s + x.itemCount, 0) / count : 0;
+
+// Resolve a seller's email from any sale
+const seller = sales[0]?.soldBy && (await internal.employees.get(sales[0].soldBy.id));
+
+// One page, or a single sale
+const page = await internal.sales.list({ startDate, endDate, search: "jose", limit: 20 });
+const one = await internal.sales.get("e8e5d921-b949-4a2f-a740-4add3bb5be6a");
+```
+
+Each `Sale` has `id`, `receiptId`, `source`, `storeId`/`storeName`,
+`purchaseType`, `completedAt`, `soldBy {id,name,firstName,lastName}`,
+`drawer {id,name}`, cents totals (`totalPrice`, `totalPreTaxPrice`,
+`totalTaxes`, `totalDiscounts`, …), `loyalty {pointsEarned,pointsSpent}`,
+`items[]`, and a derived `itemCount` (UPT). Customer PII and transaction detail
+are deliberately not selected.
 
 ## Token lifecycle
 

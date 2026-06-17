@@ -5,6 +5,7 @@ import { EmployeesResource } from "./employees.js";
 import { InternalHttp } from "./http.js";
 import { ReportsResource } from "./reports.js";
 import { RoomsResource } from "./rooms.js";
+import { SalesResource } from "./sales.js";
 import { SessionAuth } from "./session-auth.js";
 import { UsersResource } from "./users.js";
 
@@ -33,6 +34,7 @@ export class FlowhubInternalClient {
 	readonly drawers: DrawersResource;
 	readonly users: UsersResource;
 	readonly employees: EmployeesResource;
+	readonly sales: SalesResource;
 	readonly rooms: RoomsResource;
 	readonly storeId: string | undefined;
 
@@ -58,6 +60,7 @@ export class FlowhubInternalClient {
 		this.drawers = new DrawersResource(http, auth);
 		this.users = new UsersResource(http, auth);
 		this.employees = new EmployeesResource(http, auth, config.storeId);
+		this.sales = new SalesResource(http, auth);
 		this.rooms = new RoomsResource(http, auth);
 	}
 

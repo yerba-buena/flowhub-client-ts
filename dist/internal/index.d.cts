@@ -734,6 +734,140 @@ declare class RoomsResource {
 }
 
 /**
+ * Types for the sales resource.
+ *
+ * Backed by the dashboard's `filteredSales` GraphQL field (operation `GetSales`,
+ * used for both the paginated list and single-sale lookup). Reverse-engineered
+ * from the Cashier → Sales screen — see `docs/sales-discovery.md`.
+ *
+ * **Money is integer cents throughout** (e.g. `1200` = $12.00), matching the
+ * cash-management types. The seller (`soldBy.id`) is the same user UUID exposed
+ * by the `employees` resource (and the public API's `Sale.budtenderId`), which
+ * is what makes `employees.get(sale.soldBy.id)` resolve a seller's email.
+ */
+type PurchaseType = "REC" | "MED" | (string & {});
+type SalesCustomerType = "REC" | "MED" | (string & {});
+type SalesOrderBy = "completedAt" | (string & {});
+type SalesReportingStatus = "all" | "reported" | "unreported" | (string & {});
+interface SaleSeller {
+    /** User UUID — equals the `employees` resource `id` and `Sale.budtenderId`. */
+    readonly id: string;
+    readonly firstName: string | null;
+    readonly lastName: string | null;
+    /** `"First Last"` (trimmed). */
+    readonly name: string;
+}
+interface SaleDrawerRef {
+    readonly id: string;
+    readonly name: string;
+}
+interface SaleLoyalty {
+    readonly pointsEarned: number;
+    readonly pointsSpent: number;
+}
+interface SaleItem {
+    readonly id: string;
+    readonly inventoryId: string | null;
+    readonly categoryId: string | null;
+    readonly brand: string | null;
+    readonly productName: string;
+    readonly variantName: string | null;
+    readonly sku: string | null;
+    readonly regulatoryId: string | null;
+    readonly isSoldByWeight: boolean;
+    readonly quantity: number;
+    /** cents */
+    readonly preTaxPrice: number;
+    /** cents */
+    readonly postTaxPrice: number;
+    /** cents */
+    readonly totalItemCost: number;
+    /** cents */
+    readonly totalPrice: number;
+    /** cents */
+    readonly totalDiscounts: number;
+    /** cents */
+    readonly totalTaxes: number;
+}
+interface Sale {
+    readonly id: string;
+    readonly source: string | null;
+    readonly receiptId: string | null;
+    readonly storeId: string;
+    readonly storeName: string | null;
+    readonly purchaseType: PurchaseType;
+    /** ISO 8601 timestamp. */
+    readonly completedAt: string;
+    readonly editedCount: number | null;
+    readonly soldBy: SaleSeller | null;
+    readonly drawer: SaleDrawerRef | null;
+    /** cents */
+    readonly totalPreTaxPrice: number;
+    /** cents */
+    readonly totalPostTaxPrice: number;
+    /** cents */
+    readonly totalItemPrice: number;
+    /** cents */
+    readonly totalDiscounts: number;
+    /** cents */
+    readonly totalTaxes: number;
+    /** cents */
+    readonly totalFees: number;
+    /** cents — the grand total. Useful for AOV. */
+    readonly totalPrice: number;
+    readonly loyalty: SaleLoyalty | null;
+    readonly items: ReadonlyArray<SaleItem>;
+    /** Derived: sum of `items[].quantity` (units per transaction / UPT). */
+    readonly itemCount: number;
+}
+interface ListSalesParams {
+    /** Required. `YYYY-MM-DD`. */
+    readonly startDate: string;
+    /** Required. `YYYY-MM-DD`. */
+    readonly endDate: string;
+    /** Filter to specific seller user UUIDs (the `employees`/`soldBy` id). */
+    readonly employeeIds?: ReadonlyArray<string>;
+    readonly drawerIds?: ReadonlyArray<string>;
+    readonly customerType?: SalesCustomerType;
+    readonly paymentMethod?: string;
+    readonly source?: string;
+    /** Free-text search (customer name, receipt id, etc., as in the UI). */
+    readonly search?: string;
+    /** Defaults server-side; `"all"` in the dashboard. */
+    readonly reportingStatus?: SalesReportingStatus;
+    /** Include sales from every store the user can access (default false). */
+    readonly shouldIncludeAllStores?: boolean;
+    readonly orderBy?: SalesOrderBy;
+    readonly orderDirection?: OrderDirection;
+    readonly limit?: number;
+    readonly offset?: number;
+}
+
+/**
+ * Read-only access to completed sales via the dashboard's internal
+ * `filteredSales` field. Distinct from the public orders/sales API: it carries
+ * `soldBy { id }` (the seller's user UUID, equal to the `employees` id) and
+ * accepts an `employeeIds` filter — purpose-built for per-budtender views.
+ *
+ * Requires dashboard credentials. Retries once on 401.
+ */
+declare class SalesResource {
+    private readonly http;
+    private readonly auth;
+    constructor(http: InternalHttp, auth: SessionAuth);
+    /** List one page of sales within a date range. `startDate`/`endDate` required. */
+    list(params: ListSalesParams): Promise<Sale[]>;
+    /**
+     * Fetch every sale in the range by auto-paginating `list()`. `limit`/`offset`
+     * in `params` are ignored (managed internally).
+     */
+    listAll(params: Omit<ListSalesParams, "limit" | "offset">): Promise<Sale[]>;
+    /** Fetch a single sale by its UUID, or `null` if not found. */
+    get(id: string): Promise<Sale | null>;
+    private withAuthRetry;
+}
+
+/**
  * Read-only access to Flowhub users — primarily for resolving user IDs
  * when assigning users to drawers or attributing cash events.
  *
@@ -775,6 +909,7 @@ declare class FlowhubInternalClient {
     readonly drawers: DrawersResource;
     readonly users: UsersResource;
     readonly employees: EmployeesResource;
+    readonly sales: SalesResource;
     readonly rooms: RoomsResource;
     readonly storeId: string | undefined;
     private readonly config;
@@ -853,4 +988,4 @@ declare class DrawerWatcher {
  */
 declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListUsersParams, type OrderDirection, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListSalesParams, type ListUsersParams, type OrderDirection, type PurchaseType, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type Sale, type SaleDrawerRef, type SaleItem, type SaleLoyalty, type SaleSeller, type SalesCustomerType, type SalesOrderBy, type SalesReportingStatus, SalesResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };

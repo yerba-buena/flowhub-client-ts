@@ -80,13 +80,17 @@ stores        [{ id, name }]          (full fragment has address/settings/rooms/
 to a roster. We don't select them, so they never hit the wire response or our
 types.
 
-## Open verification (acceptance criterion)
+## ✅ ID verification (resolved)
 
-`Employee.id == Sale.budtenderId` is assumed from Flowhub's data model but was
-**not** verifiable from this HAR (it contains no `Sale` records). Spot-check once:
-pull a recent `Sale`, take its `budtenderId`, and confirm
-`employees.get(budtenderId)` returns the expected person. Documented inline on
-`Employee.id`.
+`Employee.id == Sale seller id` is now **confirmed**. A later capture of the
+Cashier → Sales screen (see [`sales-discovery.md`](./sales-discovery.md)) showed
+a user UUID that appears here as an `employees` `id` appearing **verbatim** as a
+`Sale.soldBy.id`, for the same person. So `employees.get(sale.soldBy.id)`
+resolves a seller's email. The public API's `Sale.budtenderId` is the same
+seller-identity field (typed as `string` in `flowhub-api-docs`); if you read
+sales from the public API instead of the internal `sales` resource, a one-off
+check that a public `budtenderId` equals a known `employees` id is all that
+remains — the internal path is proven.
 
 ## Mapping to the resource
 

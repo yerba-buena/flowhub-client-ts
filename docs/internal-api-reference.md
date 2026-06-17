@@ -50,7 +50,14 @@ GraphQL at `/graph/query`. Queries: `GetDrawers`, `GetDrawerActivities`,
 ### Employees / staff roster — `internal.employees` ✅
 GraphQL `filteredUsers` field: `GetAllUsers` (limit/offset paginated roster) and
 `GetOneUser` (by id). Provides the deterministic `email → id` mapping where `id`
-is expected to equal `Sale.budtenderId`. → [`employees-discovery.md`](./employees-discovery.md)
+is **verified** to equal the sale seller id (`Sale.soldBy.id` / `budtenderId`).
+→ [`employees-discovery.md`](./employees-discovery.md)
+
+### Sales — `internal.sales` ✅
+GraphQL `filteredSales` field (`GetSales`, for both list and single-sale lookup).
+Read-only completed sales with `soldBy { id }` (the seller's user UUID, equal to
+the `employees` id), an `employeeIds` filter for per-budtender views, money in
+integer cents, items, and loyalty. → [`sales-discovery.md`](./sales-discovery.md)
 
 ### Users (drawer assignment) — `internal.users` ✅
 GraphQL `GetUsers` (`storeUsers`) — a lighter user list used when assigning
@@ -85,6 +92,7 @@ shapes, quirks) and/or a capture runbook for surfaces not yet captured.
 | [`reports-discovery.md`](./reports-discovery.md) | CSV reports | captured ✅ |
 | [`cash-management-discovery.md`](./cash-management-discovery.md) | Drawers / cash events | captured ✅ |
 | [`employees-discovery.md`](./employees-discovery.md) | Staff roster (read) | captured ✅ |
+| [`sales-discovery.md`](./sales-discovery.md) | Sales (read) | captured ✅ |
 | [`product-inventory-discovery.md`](./product-inventory-discovery.md) | Products / inventory / log | runbook 🔲 |
 | [`deals-discovery.md`](./deals-discovery.md) | Deals | runbook 🔲 |
 | [`plans/`](./plans/) | Resource design plans | — |
