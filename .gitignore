@@ -7,3 +7,8 @@ node_modules/
 coverage/
 *.tsbuildinfo
 *.har
+
+# Reverse-engineering captures (HARs / instrument dumps) — never commit; they
+# contain live dashboard session tokens. Only this folder's README is tracked.
+captures/*
+!captures/README.md
