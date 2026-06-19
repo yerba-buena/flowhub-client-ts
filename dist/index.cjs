@@ -66,11 +66,18 @@ var FlowhubAuthError = class extends FlowhubError {
   }
 };
 var FlowhubRateLimitError = class extends FlowhubError {
+  /** Suggested wait before retrying, in **seconds** (rounded), if known. */
   retryAfter;
+  limit;
+  remaining;
+  resetAt;
   constructor(message, options) {
     super(message, { statusCode: 429, requestId: options?.requestId, cause: options?.cause });
     this.name = "FlowhubRateLimitError";
     this.retryAfter = options?.retryAfter;
+    this.limit = options?.limit;
+    this.remaining = options?.remaining;
+    this.resetAt = options?.resetAt;
   }
 };
 var FlowhubNotFoundError = class extends FlowhubError {
@@ -88,22 +95,80 @@ var FlowhubValidationError = class extends FlowhubError {
   }
 };
 
+// src/rate-limiter.ts
+var DEFAULT_RATE_LIMIT_RPS = 45;
+var RateLimiter = class {
+  constructor(rps, capacity) {
+    this.rps = rps;
+    this.capacity = capacity;
+    if (rps <= 0) throw new Error("RateLimiter requires rps > 0");
+    this.tokens = capacity;
+    this.lastRefillMs = Date.now();
+  }
+  rps;
+  capacity;
+  tokens;
+  lastRefillMs;
+  waiters = [];
+  timer = null;
+  /** Resolves when a token is available (immediately if the bucket isn't empty). */
+  acquire() {
+    return new Promise((resolve) => {
+      this.waiters.push(resolve);
+      this.process();
+    });
+  }
+  refill() {
+    const now = Date.now();
+    const elapsedSec = (now - this.lastRefillMs) / 1e3;
+    if (elapsedSec > 0) {
+      this.tokens = Math.min(this.capacity, this.tokens + elapsedSec * this.rps);
+      this.lastRefillMs = now;
+    }
+  }
+  process() {
+    this.refill();
+    while (this.tokens >= 1 && this.waiters.length > 0) {
+      this.tokens -= 1;
+      const resolve = this.waiters.shift();
+      resolve?.();
+    }
+    if (this.waiters.length > 0 && this.timer == null) {
+      const needed = 1 - this.tokens;
+      const waitMs = Math.max(1, Math.ceil(needed / this.rps * 1e3));
+      this.timer = setTimeout(() => {
+        this.timer = null;
+        this.process();
+      }, waitMs);
+    }
+  }
+};
+
 // src/http.ts
 var RETRYABLE_STATUS_CODES = /* @__PURE__ */ new Set([429, 500, 502, 503, 504]);
 var BASE_DELAY_MS = 500;
-var MAX_DELAY_MS = 3e4;
+var DEFAULT_MAX_DELAY_MS = 3e4;
 var HttpClient = class {
   baseUrl;
   timeout;
   retries;
   credentials;
   fetchFn;
+  maxDelayMs;
+  jitter;
+  limiter;
+  onRateLimit;
   constructor(options) {
     this.credentials = options.credentials;
     this.baseUrl = (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
     this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
     this.retries = options.retries ?? DEFAULT_RETRIES;
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
+    this.maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
+    this.jitter = options.jitter ?? "full";
+    this.onRateLimit = options.onRateLimit;
+    const rps = options.rateLimit?.rps ?? DEFAULT_RATE_LIMIT_RPS;
+    this.limiter = rps > 0 ? new RateLimiter(rps, options.rateLimit?.burst ?? Math.ceil(rps)) : null;
   }
   async requestText(options) {
     const url = this.buildUrl(options.path, options.query);
@@ -111,6 +176,7 @@ var HttpClient = class {
       Accept: "text/plain",
       ...createAuthHeaders(this.credentials)
     };
+    await this.limiter?.acquire();
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), this.timeout);
     try {
@@ -120,11 +186,16 @@ var HttpClient = class {
         signal: options.signal ?? controller.signal
       });
       clearTimeout(timeoutId);
+      this.notifyRateLimit(response.headers);
       if (response.ok) {
         return await response.text();
       }
       const errorBody = await response.text().catch(() => "");
       const requestId = response.headers.get("x-request-id") ?? void 0;
+      if (response.status === 429) {
+        const info = this.readRateLimit(response.headers);
+        throw this.rateLimitError(info, errorBody, response.statusText, requestId);
+      }
       throw this.mapError(response.status, errorBody, requestId);
     } catch (err) {
       clearTimeout(timeoutId);
@@ -144,11 +215,12 @@ var HttpClient = class {
     };
     const method = options.method ?? "GET";
     let lastError;
+    let nextDelayMs = 0;
     for (let attempt = 0; attempt <= this.retries; attempt++) {
       if (attempt > 0) {
-        const delay = this.calculateDelay(attempt);
-        await this.sleep(delay);
+        await this.sleep(nextDelayMs);
       }
+      await this.limiter?.acquire();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), this.timeout);
       try {
@@ -159,6 +231,7 @@ var HttpClient = class {
           signal: options.signal ?? controller.signal
         });
         clearTimeout(timeoutId);
+        this.notifyRateLimit(response.headers);
         if (response.ok) {
           if (response.status === 204) {
             return void 0;
@@ -171,36 +244,50 @@ var HttpClient = class {
           throw this.mapError(response.status, errorBody, requestId);
         }
         if (response.status === 429) {
-          const retryAfter = this.parseRetryAfter(response.headers.get("retry-after"));
-          lastError = new FlowhubRateLimitError(
-            `Rate limited: ${errorBody || response.statusText}`,
-            { retryAfter, requestId }
-          );
-          if (retryAfter != null && attempt < this.retries) {
-            await this.sleep(retryAfter * 1e3);
-          }
+          const info = this.readRateLimit(response.headers);
+          lastError = this.rateLimitError(info, errorBody, response.statusText, requestId);
+          nextDelayMs = this.retryDelayMs(attempt + 1, info.retryAfterMs);
         } else {
           lastError = new FlowhubError(
             `Server error ${response.status}: ${errorBody || response.statusText}`,
             { statusCode: response.status, requestId }
           );
+          nextDelayMs = this.retryDelayMs(attempt + 1, void 0);
         }
       } catch (err) {
         clearTimeout(timeoutId);
         if (err instanceof FlowhubAuthError || err instanceof FlowhubNotFoundError || err instanceof FlowhubValidationError) {
           throw err;
         }
-        if (err instanceof FlowhubRateLimitError || err instanceof FlowhubError) {
+        if (err instanceof FlowhubRateLimitError) {
           lastError = err;
-          if (attempt < this.retries) continue;
+          if (attempt < this.retries) {
+            nextDelayMs = this.retryDelayMs(
+              attempt + 1,
+              err.retryAfter != null ? err.retryAfter * 1e3 : void 0
+            );
+            continue;
+          }
+          throw err;
+        }
+        if (err instanceof FlowhubError) {
+          lastError = err;
+          if (attempt < this.retries) {
+            nextDelayMs = this.retryDelayMs(attempt + 1, void 0);
+            continue;
+          }
           throw err;
         }
         if (err instanceof DOMException && err.name === "AbortError") {
           lastError = new FlowhubError("Request timed out", { cause: err });
-          if (attempt < this.retries) continue;
+          if (attempt < this.retries) {
+            nextDelayMs = this.retryDelayMs(attempt + 1, void 0);
+            continue;
+          }
           throw lastError;
         }
         lastError = new FlowhubError("Network error", { cause: err });
+        nextDelayMs = this.retryDelayMs(attempt + 1, void 0);
         if (attempt < this.retries) continue;
       }
     }
@@ -250,18 +337,85 @@ var HttpClient = class {
         });
     }
   }
-  parseRetryAfter(header) {
-    if (header == null) return void 0;
-    const seconds = Number(header);
-    if (!Number.isNaN(seconds)) return seconds;
-    const date = Date.parse(header);
-    if (!Number.isNaN(date)) return Math.max(0, Math.ceil((date - Date.now()) / 1e3));
+  /**
+   * Read rate-limit signals from response headers. Handles `Retry-After`
+   * (delta-seconds or HTTP-date), `Retry-After-Ms`, and the de-facto
+   * `X-RateLimit-*` / `RateLimit-*` families (`-Limit`, `-Remaining`,
+   * `-Reset` as epoch-seconds or delta-seconds, `-Reset-After` as delta-seconds).
+   */
+  readRateLimit(headers) {
+    const num = (v) => {
+      if (v == null) return void 0;
+      const n = Number(v);
+      return Number.isFinite(n) ? n : void 0;
+    };
+    const limit = num(headers.get("x-ratelimit-limit") ?? headers.get("ratelimit-limit"));
+    const remaining = num(
+      headers.get("x-ratelimit-remaining") ?? headers.get("ratelimit-remaining")
+    );
+    const retryAfterMs = this.parseRetryAfterMs(headers);
+    let resetAt;
+    const resetRaw = headers.get("x-ratelimit-reset") ?? headers.get("ratelimit-reset");
+    if (resetRaw != null) {
+      const n = Number(resetRaw);
+      if (Number.isFinite(n)) {
+        resetAt = n > 1e7 ? n * 1e3 : Date.now() + n * 1e3;
+      } else {
+        const d = Date.parse(resetRaw);
+        if (!Number.isNaN(d)) resetAt = d;
+      }
+    }
+    if (resetAt == null && retryAfterMs != null) resetAt = Date.now() + retryAfterMs;
+    return { limit, remaining, resetAt, retryAfterMs };
+  }
+  parseRetryAfterMs(headers) {
+    const ms = headers.get("retry-after-ms");
+    if (ms != null) {
+      const n = Number(ms);
+      if (Number.isFinite(n)) return Math.max(0, n);
+    }
+    const retryAfter = headers.get("retry-after");
+    if (retryAfter != null) {
+      const seconds = Number(retryAfter);
+      if (Number.isFinite(seconds)) return Math.max(0, seconds * 1e3);
+      const date = Date.parse(retryAfter);
+      if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+    }
+    const resetAfter = headers.get("x-ratelimit-reset-after") ?? headers.get("ratelimit-reset-after");
+    if (resetAfter != null) {
+      const n = Number(resetAfter);
+      if (Number.isFinite(n)) return Math.max(0, n * 1e3);
+    }
     return void 0;
   }
+  notifyRateLimit(headers) {
+    if (!this.onRateLimit) return;
+    const info = this.readRateLimit(headers);
+    if (info.limit != null || info.remaining != null || info.resetAt != null || info.retryAfterMs != null) {
+      this.onRateLimit(info);
+    }
+  }
+  rateLimitError(info, body, statusText, requestId) {
+    return new FlowhubRateLimitError(`Rate limited: ${body || statusText}`, {
+      retryAfter: info.retryAfterMs != null ? Math.ceil(info.retryAfterMs / 1e3) : void 0,
+      requestId,
+      limit: info.limit,
+      remaining: info.remaining,
+      resetAt: info.resetAt
+    });
+  }
+  /** Delay before the next attempt: honor a server-provided wait, else jittered backoff. */
+  retryDelayMs(attempt, retryAfterMs) {
+    if (retryAfterMs != null) return Math.min(retryAfterMs, this.maxDelayMs);
+    return this.calculateDelay(attempt);
+  }
   calculateDelay(attempt) {
-    const exponential = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
-    const jitter = Math.random() * exponential;
-    return Math.floor(exponential / 2 + jitter);
+    const exponential = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), this.maxDelayMs);
+    if (this.jitter === "none") return Math.floor(exponential);
+    if (this.jitter === "equal") {
+      return Math.floor(exponential / 2 + Math.random() * (exponential / 2));
+    }
+    return Math.floor(Math.random() * exponential);
   }
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -543,7 +697,11 @@ var FlowhubClient = class _FlowhubClient {
       baseUrl: options.baseUrl,
       timeout: options.timeout,
       retries: options.retries,
-      fetchFn: options.fetchFn
+      fetchFn: options.fetchFn,
+      maxDelayMs: options.maxDelayMs,
+      jitter: options.jitter,
+      rateLimit: options.rateLimit,
+      onRateLimit: options.onRateLimit
     });
     this.locations = new LocationsResource(this.http);
     this.inventory = new InventoryResource(this.http, locationId);

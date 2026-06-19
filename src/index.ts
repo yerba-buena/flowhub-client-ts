@@ -1,4 +1,6 @@
 export { FlowhubClient, type FlowhubClientOptions } from "./client.js";
+export type { JitterMode } from "./http.js";
+export type { RateLimitInfo, RateLimitOptions } from "./rate-limiter.js";
 export {
 	FlowhubAuthError,
 	FlowhubError,

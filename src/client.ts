@@ -1,5 +1,6 @@
 import type { FlowhubCredentials } from "./auth.js";
-import { HttpClient } from "./http.js";
+import { HttpClient, type JitterMode } from "./http.js";
+import type { RateLimitInfo, RateLimitOptions } from "./rate-limiter.js";
 import { AuthTokenResource } from "./resources/auth-token.js";
 import { InventoryResource } from "./resources/inventory.js";
 import { LocationsResource } from "./resources/locations.js";
@@ -24,6 +25,18 @@ export interface FlowhubClientOptions {
 	 * hardening" section for a recipe.
 	 */
 	readonly fetchFn?: typeof fetch | undefined;
+	/** Cap on a single retry backoff delay, in ms. Default 30000. */
+	readonly maxDelayMs?: number | undefined;
+	/** Backoff randomization: `"full"` (default), `"equal"`, or `"none"`. */
+	readonly jitter?: JitterMode | undefined;
+	/**
+	 * Client-side request throttle for the public Flowhub API, which rejects
+	 * bursts with HTTP 429. Defaults to a conservative ~45 req/s; pass
+	 * `{ rps: 0 }` to disable, or raise `rps`/`burst` if your key allows.
+	 */
+	readonly rateLimit?: RateLimitOptions | undefined;
+	/** Called when the server returns rate-limit headers, so you can self-pace. */
+	readonly onRateLimit?: ((info: RateLimitInfo) => void) | undefined;
 }
 
 export class FlowhubClient {
@@ -53,6 +66,10 @@ export class FlowhubClient {
 			timeout: options.timeout,
 			retries: options.retries,
 			fetchFn: options.fetchFn,
+			maxDelayMs: options.maxDelayMs,
+			jitter: options.jitter,
+			rateLimit: options.rateLimit,
+			onRateLimit: options.onRateLimit,
 		});
 		this.locations = new LocationsResource(this.http);
 		this.inventory = new InventoryResource(this.http, locationId);

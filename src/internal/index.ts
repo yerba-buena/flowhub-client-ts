@@ -36,6 +36,7 @@ export type {
 	UserRole,
 	UserStore,
 } from "./cash-management-types.js";
+export { parseCsv, parseCsvRaw } from "./csv.js";
 export { DrawerWatcher, computeEvents } from "./drawer-watcher.js";
 export { EmployeesResource } from "./employees.js";
 export type {
@@ -64,6 +65,7 @@ export type {
 export type {
 	CommonReportParams,
 	DateRangeParams,
+	ParsedReport,
 	ReportDownload,
 	ReportMetadata,
 	ReportParameterMetadata,

@@ -151,6 +151,23 @@ import { writeFile } from "node:fs/promises";
 await writeFile(filename, data);
 ```
 
+### Parsed rows (CSV → objects)
+
+`downloadReportRows()` parses any report's CSV into header + row objects (raw
+string values, no coercion) — handy for consuming report data programmatically:
+
+```ts
+const { columns, rows } = await internal.reports.downloadReportRows(
+  "budtender-performance",
+  { start_date: "2026-06-01", end_date: "2026-06-17", store_id: "your-store-id" },
+);
+// columns: string[]; rows: Array<Record<string, string>>
+```
+
+Typed, per-report helpers (with numeric coercion and the seller key reconciled
+to `employees.id`) are being added for the Sales Performance reports as their
+column schemas are confirmed — see issue #13.
+
 ### Convenience methods
 
 Pre-typed methods for common reports:

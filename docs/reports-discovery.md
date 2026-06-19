@@ -109,6 +109,26 @@ Total Tax in Dollars,"$1,114.35","$1,114.35"
 
 Reports use `store_id` query param. Multiple stores per user are listed in the login response under `user.stores[]`. `activeStoreId` in the response indicates the default.
 
+## Per-seller (budtender) reports — for issue #13 / Sales Performance
+
+Reports that carry a per-seller dimension (so a consumer can compute or attribute
+metrics to an individual budtender, reconciled to `employees.id` / `Sale.soldBy.id`):
+
+| `reportId` | Per-seller dimension | Notes |
+|---|---|---|
+| `budtender-performance` | **primary** | Most likely to pre-compute AOV / UPT / loyalty per seller — matches the dashboard. Params include `employee`, `brand`, `product_name`, `category`, `purchase_type`, `order_type`. |
+| `employee-sales` | yes | Sales totals per employee. |
+| `customers-sales-performance` | yes | Sales performance with a customer/seller cut. |
+| `upsells-by-budtender` | yes | Upsell attribution per seller. |
+| `tips-by-budtender` | yes | Tips per seller. |
+| `customers-loyalty` / `loyalty-transactions` / `customers` | indirect | Loyalty membership + customer **created/enrolled date** — needed to derive "new loyalty signup this week" per seller (join on the sale's seller). |
+
+> ⚠️ **CSV column schemas for these are not yet captured.** Header + row
+> granularity (summary-per-seller vs per-product breakdown) must be confirmed by
+> downloading each report before typed row helpers can be added. Use the generic
+> `reports.downloadReportRows(reportId, params)` (parses CSV → row objects) in the
+> meantime; typed per-report helpers follow once columns are confirmed. (#13)
+
 ## Other observations
 
 - GraphQL is used at `/graph/query`, `/billing/query`, `/analytics/query`

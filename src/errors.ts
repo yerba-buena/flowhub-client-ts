@@ -26,16 +26,29 @@ export class FlowhubAuthError extends FlowhubError {
 export interface FlowhubRateLimitErrorOptions {
 	retryAfter?: number | undefined;
 	requestId?: string | undefined;
+	/** Value of `X-RateLimit-Limit` / `RateLimit-Limit`, if the server sent it. */
+	limit?: number | undefined;
+	/** Value of `X-RateLimit-Remaining` / `RateLimit-Remaining`, if present. */
+	remaining?: number | undefined;
+	/** Epoch milliseconds when the rate-limit window resets, if derivable. */
+	resetAt?: number | undefined;
 	cause?: unknown;
 }
 
 export class FlowhubRateLimitError extends FlowhubError {
+	/** Suggested wait before retrying, in **seconds** (rounded), if known. */
 	readonly retryAfter: number | undefined;
+	readonly limit: number | undefined;
+	readonly remaining: number | undefined;
+	readonly resetAt: number | undefined;
 
 	constructor(message: string, options?: FlowhubRateLimitErrorOptions) {
 		super(message, { statusCode: 429, requestId: options?.requestId, cause: options?.cause });
 		this.name = "FlowhubRateLimitError";
 		this.retryAfter = options?.retryAfter;
+		this.limit = options?.limit;
+		this.remaining = options?.remaining;
+		this.resetAt = options?.resetAt;
 	}
 }
 

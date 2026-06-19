@@ -64,7 +64,18 @@ export interface CustomerWriteParams {
 // ── Query params ────────────────────────────────────────────────────
 
 export interface PaginationParams {
+	/**
+	 * Lower date bound for list endpoints (e.g. `listByLocationId`). Use this to
+	 * fetch a bounded window (a single week) instead of paginating an entire
+	 * location's order history — the single biggest lever for staying under the
+	 * API rate limit. ISO 8601 / `YYYY-MM-DD`.
+	 *
+	 * Note: server-side honoring of these bounds on the orders endpoints is not
+	 * documented in `flowhub-api-docs`; confirm against a live response for your
+	 * account. The client always forwards them as query params.
+	 */
 	readonly created_after?: string | undefined;
+	/** Upper date bound for list endpoints. See {@link PaginationParams.created_after}. */
 	readonly created_before?: string | undefined;
 	readonly page?: number | undefined;
 	readonly page_size?: number | undefined;

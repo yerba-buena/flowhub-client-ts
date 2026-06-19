@@ -338,6 +338,31 @@ describe("ReportsResource", () => {
 		expect(result.data.toString("utf-8")).toBe("col1,col2\nv1,v2\n");
 	});
 
+	it("downloadReportRows parses the CSV into header + row objects", async () => {
+		server.use(
+			loginHandler(),
+			http.get(`${BASE_URL}/analytics/budtender-performance`, () => {
+				return new HttpResponse(
+					'Budtender,AOV,UPT\n"Murtha, Mark","$12.00","1.7"\nTalia G,"$9.50","2.1"\n',
+					{ status: 200, headers: { "Content-Type": "text/plain; charset=utf-8" } },
+				);
+			}),
+		);
+
+		const client = makeClient();
+		const { columns, rows, filename } = await client.reports.downloadReportRows(
+			"budtender-performance",
+			{ start_date: "2026-06-01", end_date: "2026-06-17", store_id: "s1" },
+		);
+
+		expect(columns).toEqual(["Budtender", "AOV", "UPT"]);
+		expect(rows).toEqual([
+			{ Budtender: "Murtha, Mark", AOV: "$12.00", UPT: "1.7" },
+			{ Budtender: "Talia G", AOV: "$9.50", UPT: "2.1" },
+		]);
+		expect(filename).toBe("budtender-performance-2026-06-01-2026-06-17.csv");
+	});
+
 	it("concurrent downloads share a single login", async () => {
 		const loginCounter = { count: 0 };
 		server.use(
