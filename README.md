@@ -99,6 +99,13 @@ const status = await flowhub.orderAhead.getStatus("order-id");
 await flowhub.orderAhead.postback("order-id");
 ```
 
+## Computing sales metrics
+
+For per-budtender **AOV / UPT / loyalty** — including which fields to read, what
+to exclude, the seller-id join that matters (use the internal `sales`
+`soldBy.id`, **not** the public `budtenderId`), and the order-status casing /
+timezone gotchas — see **[docs/METRICS.md](./docs/METRICS.md)**.
+
 ## Error handling
 
 All errors are typed:
