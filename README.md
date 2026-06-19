@@ -133,8 +133,57 @@ const flowhub = new FlowhubClient({
   timeout: 30_000,                   // optional, default 30s
   retries: 3,                        // optional, default 3
   fetchFn: customFetch,              // optional, defaults to globalThis.fetch
+  maxDelayMs: 30_000,                // optional, cap on a single retry backoff
+  jitter: "full",                    // optional, "full" (default) | "equal" | "none"
+  rateLimit: { rps: 45, burst: 45 }, // optional, client-side throttle (see below)
+  onRateLimit: (info) => {},         // optional, called with rate-limit header info
 });
 ```
+
+## Rate limiting
+
+The public Flowhub API rejects request bursts with HTTP 429
+(`FlowhubRateLimitError`). Downstream apps have observed the limit around
+**~59 requests/second**, though Flowhub does not publish an exact figure or
+scope (per key vs per IP, burst vs sustained), so treat it as approximate.
+
+The client helps you stay under it in three ways:
+
+**1. Client-side throttle (on by default).** Every request passes through a
+shared token-bucket limiter, defaulting to a conservative **~45 req/s**. Tune or
+disable it:
+
+```ts
+new FlowhubClient({ clientId, apiKey, rateLimit: { rps: 50, burst: 50 } });
+new FlowhubClient({ clientId, apiKey, rateLimit: { rps: 0 } }); // disable
+```
+
+**2. Graceful retries.** On 429 (and 500/502/503/504) the client retries with
+**full-jitter exponential backoff** (`jitter`/`maxDelayMs` configurable). If the
+server sends a `Retry-After` (delta-seconds or HTTP-date), `Retry-After-Ms`, or
+`X-RateLimit-Reset[-After]` / `RateLimit-*` header, that wait is honored instead.
+
+**3. Visibility.** `FlowhubRateLimitError` exposes `retryAfter` (seconds),
+`limit`, `remaining`, and `resetAt` when the server provides them. Pass
+`onRateLimit(info)` to observe rate-limit headers on **every** response and
+self-pace. (Note: some Flowhub 429s carry no rate-limit headers at all — then
+`retryAfter` is `undefined` and the client falls back to jittered backoff.)
+
+**Reduce call volume with date bounds.** The biggest lever is fetching less.
+List endpoints accept `created_after` / `created_before`, so you can pull a
+bounded window instead of paginating an entire location's history:
+
+```ts
+const { orders } = await flowhub.orders.listByLocationId(importId, {
+  created_after: "2026-06-01",
+  created_before: "2026-06-08",
+  page_size: 100,
+});
+```
+
+> Server-side honoring of these date bounds on the orders endpoints isn't
+> documented by Flowhub — the client always sends them; confirm the effect
+> against a live response for your account.
 
 ## Custom fetch / SSRF hardening
 

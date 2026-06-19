@@ -60,11 +60,18 @@ var FlowhubAuthError = class extends FlowhubError {
   }
 };
 var FlowhubRateLimitError = class extends FlowhubError {
+  /** Suggested wait before retrying, in **seconds** (rounded), if known. */
   retryAfter;
+  limit;
+  remaining;
+  resetAt;
   constructor(message, options) {
     super(message, { statusCode: 429, requestId: options?.requestId, cause: options?.cause });
     this.name = "FlowhubRateLimitError";
     this.retryAfter = options?.retryAfter;
+    this.limit = options?.limit;
+    this.remaining = options?.remaining;
+    this.resetAt = options?.resetAt;
   }
 };
 var FlowhubNotFoundError = class extends FlowhubError {

@@ -1,4 +1,98 @@
-export { F as FlowhubAuthError, a as FlowhubError, b as FlowhubNotFoundError, c as FlowhubRateLimitError, d as FlowhubValidationError } from './errors-CktRSCIZ.cjs';
+export { F as FlowhubAuthError, a as FlowhubError, b as FlowhubNotFoundError, c as FlowhubRateLimitError, d as FlowhubValidationError } from './errors-DKceN65C.cjs';
+
+interface FlowhubCredentials {
+    readonly clientId: string;
+    readonly apiKey: string;
+    readonly accessToken?: string | undefined;
+}
+
+/**
+ * Client-side rate limiting for the public Flowhub API.
+ *
+ * Flowhub enforces a request-rate limit (downstream apps have observed ~59
+ * req/s, returning HTTP 429; the exact figure/scope is not published). To avoid
+ * tripping it, {@link HttpClient} runs every outbound request through a shared
+ * token-bucket limiter. It is configurable and can be disabled.
+ */
+interface RateLimitOptions {
+    /**
+     * Sustained requests per second. Pass `0` (or a negative number) to disable
+     * client-side throttling entirely. Defaults to {@link DEFAULT_RATE_LIMIT_RPS}.
+     */
+    readonly rps?: number | undefined;
+    /**
+     * Maximum burst — the token-bucket capacity. Defaults to `ceil(rps)`, i.e.
+     * up to one second's worth of requests may fire back-to-back before the
+     * limiter starts pacing.
+     */
+    readonly burst?: number | undefined;
+}
+/** Rate-limit signal surfaced from response headers, when the server sends them. */
+interface RateLimitInfo {
+    /** `X-RateLimit-Limit` / `RateLimit-Limit`, if present. */
+    readonly limit?: number | undefined;
+    /** `X-RateLimit-Remaining` / `RateLimit-Remaining`, if present. */
+    readonly remaining?: number | undefined;
+    /** Epoch milliseconds when the window resets, if derivable. */
+    readonly resetAt?: number | undefined;
+    /** Suggested wait before retrying, in milliseconds, if the server indicated one. */
+    readonly retryAfterMs?: number | undefined;
+}
+
+/** How retry backoff delays are randomized. */
+type JitterMode = "full" | "equal" | "none";
+interface HttpClientOptions {
+    readonly credentials: FlowhubCredentials;
+    readonly baseUrl?: string | undefined;
+    readonly timeout?: number | undefined;
+    readonly retries?: number | undefined;
+    readonly fetchFn?: typeof fetch | undefined;
+    /** Cap on a single retry backoff delay, in ms. Default 30000. */
+    readonly maxDelayMs?: number | undefined;
+    /** Backoff randomization. Default `"full"` (full-jitter exponential). */
+    readonly jitter?: JitterMode | undefined;
+    /** Client-side throttle. Defaults to ~{@link DEFAULT_RATE_LIMIT_RPS} req/s; `{ rps: 0 }` disables. */
+    readonly rateLimit?: RateLimitOptions | undefined;
+    /** Called whenever the server returns rate-limit headers (success or 429), so callers can self-pace. */
+    readonly onRateLimit?: ((info: RateLimitInfo) => void) | undefined;
+}
+interface RequestOptions {
+    readonly method?: string | undefined;
+    readonly path: string;
+    readonly query?: Record<string, string | number | boolean | undefined> | undefined;
+    readonly body?: unknown;
+    readonly signal?: AbortSignal | undefined;
+}
+declare class HttpClient {
+    private readonly baseUrl;
+    private readonly timeout;
+    private readonly retries;
+    private readonly credentials;
+    private readonly fetchFn;
+    private readonly maxDelayMs;
+    private readonly jitter;
+    private readonly limiter;
+    private readonly onRateLimit;
+    constructor(options: HttpClientOptions);
+    requestText(options: RequestOptions): Promise<string>;
+    request<T>(options: RequestOptions): Promise<T>;
+    private buildUrl;
+    private mapError;
+    /**
+     * Read rate-limit signals from response headers. Handles `Retry-After`
+     * (delta-seconds or HTTP-date), `Retry-After-Ms`, and the de-facto
+     * `X-RateLimit-*` / `RateLimit-*` families (`-Limit`, `-Remaining`,
+     * `-Reset` as epoch-seconds or delta-seconds, `-Reset-After` as delta-seconds).
+     */
+    private readRateLimit;
+    private parseRetryAfterMs;
+    private notifyRateLimit;
+    private rateLimitError;
+    /** Delay before the next attempt: honor a server-provided wait, else jittered backoff. */
+    private retryDelayMs;
+    private calculateDelay;
+    private sleep;
+}
 
 interface OAuthTokenRequest {
     readonly client_id: string;
@@ -24,42 +118,6 @@ declare class AuthTokenResource {
      * option when constructing a FlowhubClient to use Order Ahead endpoints.
      */
     getToken(params: OAuthTokenRequest): Promise<OAuthTokenResponse>;
-}
-
-interface FlowhubCredentials {
-    readonly clientId: string;
-    readonly apiKey: string;
-    readonly accessToken?: string | undefined;
-}
-
-interface HttpClientOptions {
-    readonly credentials: FlowhubCredentials;
-    readonly baseUrl?: string | undefined;
-    readonly timeout?: number | undefined;
-    readonly retries?: number | undefined;
-    readonly fetchFn?: typeof fetch | undefined;
-}
-interface RequestOptions {
-    readonly method?: string | undefined;
-    readonly path: string;
-    readonly query?: Record<string, string | number | boolean | undefined> | undefined;
-    readonly body?: unknown;
-    readonly signal?: AbortSignal | undefined;
-}
-declare class HttpClient {
-    private readonly baseUrl;
-    private readonly timeout;
-    private readonly retries;
-    private readonly credentials;
-    private readonly fetchFn;
-    constructor(options: HttpClientOptions);
-    requestText(options: RequestOptions): Promise<string>;
-    request<T>(options: RequestOptions): Promise<T>;
-    private buildUrl;
-    private mapError;
-    private parseRetryAfter;
-    private calculateDelay;
-    private sleep;
 }
 
 interface FlowhubResponse<T> {
@@ -326,7 +384,18 @@ interface CustomerWriteParams {
     readonly zip?: string | undefined;
 }
 interface PaginationParams {
+    /**
+     * Lower date bound for list endpoints (e.g. `listByLocationId`). Use this to
+     * fetch a bounded window (a single week) instead of paginating an entire
+     * location's order history — the single biggest lever for staying under the
+     * API rate limit. ISO 8601 / `YYYY-MM-DD`.
+     *
+     * Note: server-side honoring of these bounds on the orders endpoints is not
+     * documented in `flowhub-api-docs`; confirm against a live response for your
+     * account. The client always forwards them as query params.
+     */
     readonly created_after?: string | undefined;
+    /** Upper date bound for list endpoints. See {@link PaginationParams.created_after}. */
     readonly created_before?: string | undefined;
     readonly page?: number | undefined;
     readonly page_size?: number | undefined;
@@ -479,6 +548,18 @@ interface FlowhubClientOptions {
      * hardening" section for a recipe.
      */
     readonly fetchFn?: typeof fetch | undefined;
+    /** Cap on a single retry backoff delay, in ms. Default 30000. */
+    readonly maxDelayMs?: number | undefined;
+    /** Backoff randomization: `"full"` (default), `"equal"`, or `"none"`. */
+    readonly jitter?: JitterMode | undefined;
+    /**
+     * Client-side request throttle for the public Flowhub API, which rejects
+     * bursts with HTTP 429. Defaults to a conservative ~45 req/s; pass
+     * `{ rps: 0 }` to disable, or raise `rps`/`burst` if your key allows.
+     */
+    readonly rateLimit?: RateLimitOptions | undefined;
+    /** Called when the server returns rate-limit headers, so you can self-pace. */
+    readonly onRateLimit?: ((info: RateLimitInfo) => void) | undefined;
 }
 declare class FlowhubClient {
     readonly locations: LocationsResource;
@@ -503,4 +584,4 @@ declare const DEFAULT_BASE_URL: "https://api.flowhub.co";
 /** Date of the docs snapshot used to generate types */
 declare const DOCS_SNAPSHOT_DATE: "2026-05-07";
 
-export { type CannabinoidInfo, type CreateOrderParams, type Customer, type CustomerGroup, type CustomerWriteParams, type CustomersListParams, DEFAULT_BASE_URL, DOCS_SNAPSHOT_DATE, FlowhubClient, type FlowhubClientOptions, type FlowhubResponse, type InventoryAnalyticsByRoomItem, type InventoryAnalyticsItem, type InventoryByRoomItem, type InventoryItem, type ListInventoryAnalyticsParams, type Location, type LocationAddress, type OAuthTokenRequest, type OAuthTokenResponse, type OrderAddress, type OrderCustomer, type OrderFee, type OrderItem, type OrderResponse, type OrderStatus, type OrdersListResponse, type PaginationParams, type Sale, type SaleItem, type SaleItemDiscount, type SalePayment, type SaleTax, type SaleTotals, type TerpeneInfo, type UpdateOrderParams };
+export { type CannabinoidInfo, type CreateOrderParams, type Customer, type CustomerGroup, type CustomerWriteParams, type CustomersListParams, DEFAULT_BASE_URL, DOCS_SNAPSHOT_DATE, FlowhubClient, type FlowhubClientOptions, type FlowhubResponse, type InventoryAnalyticsByRoomItem, type InventoryAnalyticsItem, type InventoryByRoomItem, type InventoryItem, type JitterMode, type ListInventoryAnalyticsParams, type Location, type LocationAddress, type OAuthTokenRequest, type OAuthTokenResponse, type OrderAddress, type OrderCustomer, type OrderFee, type OrderItem, type OrderResponse, type OrderStatus, type OrdersListResponse, type PaginationParams, type RateLimitInfo, type RateLimitOptions, type Sale, type SaleItem, type SaleItemDiscount, type SalePayment, type SaleTax, type SaleTotals, type TerpeneInfo, type UpdateOrderParams };

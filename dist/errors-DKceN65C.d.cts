@@ -17,10 +17,20 @@ declare class FlowhubAuthError extends FlowhubError {
 interface FlowhubRateLimitErrorOptions {
     retryAfter?: number | undefined;
     requestId?: string | undefined;
+    /** Value of `X-RateLimit-Limit` / `RateLimit-Limit`, if the server sent it. */
+    limit?: number | undefined;
+    /** Value of `X-RateLimit-Remaining` / `RateLimit-Remaining`, if present. */
+    remaining?: number | undefined;
+    /** Epoch milliseconds when the rate-limit window resets, if derivable. */
+    resetAt?: number | undefined;
     cause?: unknown;
 }
 declare class FlowhubRateLimitError extends FlowhubError {
+    /** Suggested wait before retrying, in **seconds** (rounded), if known. */
     readonly retryAfter: number | undefined;
+    readonly limit: number | undefined;
+    readonly remaining: number | undefined;
+    readonly resetAt: number | undefined;
     constructor(message: string, options?: FlowhubRateLimitErrorOptions);
 }
 declare class FlowhubNotFoundError extends FlowhubError {

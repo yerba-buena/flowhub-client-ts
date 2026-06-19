@@ -7,6 +7,15 @@ import {
 	FlowhubRateLimitError,
 	FlowhubValidationError,
 } from "./errors.js";
+import {
+	DEFAULT_RATE_LIMIT_RPS,
+	type RateLimitInfo,
+	type RateLimitOptions,
+	RateLimiter,
+} from "./rate-limiter.js";
+
+/** How retry backoff delays are randomized. */
+export type JitterMode = "full" | "equal" | "none";
 
 export interface HttpClientOptions {
 	readonly credentials: FlowhubCredentials;
@@ -14,6 +23,14 @@ export interface HttpClientOptions {
 	readonly timeout?: number | undefined;
 	readonly retries?: number | undefined;
 	readonly fetchFn?: typeof fetch | undefined;
+	/** Cap on a single retry backoff delay, in ms. Default 30000. */
+	readonly maxDelayMs?: number | undefined;
+	/** Backoff randomization. Default `"full"` (full-jitter exponential). */
+	readonly jitter?: JitterMode | undefined;
+	/** Client-side throttle. Defaults to ~{@link DEFAULT_RATE_LIMIT_RPS} req/s; `{ rps: 0 }` disables. */
+	readonly rateLimit?: RateLimitOptions | undefined;
+	/** Called whenever the server returns rate-limit headers (success or 429), so callers can self-pace. */
+	readonly onRateLimit?: ((info: RateLimitInfo) => void) | undefined;
 }
 
 export interface RequestOptions {
@@ -26,7 +43,7 @@ export interface RequestOptions {
 
 const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
 const BASE_DELAY_MS = 500;
-const MAX_DELAY_MS = 30_000;
+const DEFAULT_MAX_DELAY_MS = 30_000;
 
 export class HttpClient {
 	private readonly baseUrl: string;
@@ -34,6 +51,10 @@ export class HttpClient {
 	private readonly retries: number;
 	private readonly credentials: FlowhubCredentials;
 	private readonly fetchFn: typeof fetch;
+	private readonly maxDelayMs: number;
+	private readonly jitter: JitterMode;
+	private readonly limiter: RateLimiter | null;
+	private readonly onRateLimit: ((info: RateLimitInfo) => void) | undefined;
 
 	constructor(options: HttpClientOptions) {
 		this.credentials = options.credentials;
@@ -41,6 +62,13 @@ export class HttpClient {
 		this.timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
 		this.retries = options.retries ?? DEFAULT_RETRIES;
 		this.fetchFn = options.fetchFn ?? globalThis.fetch;
+		this.maxDelayMs = options.maxDelayMs ?? DEFAULT_MAX_DELAY_MS;
+		this.jitter = options.jitter ?? "full";
+		this.onRateLimit = options.onRateLimit;
+
+		const rps = options.rateLimit?.rps ?? DEFAULT_RATE_LIMIT_RPS;
+		this.limiter =
+			rps > 0 ? new RateLimiter(rps, options.rateLimit?.burst ?? Math.ceil(rps)) : null;
 	}
 
 	async requestText(options: RequestOptions): Promise<string> {
@@ -50,6 +78,7 @@ export class HttpClient {
 			...createAuthHeaders(this.credentials),
 		};
 
+		await this.limiter?.acquire();
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), this.timeout);
 
@@ -61,6 +90,7 @@ export class HttpClient {
 			});
 
 			clearTimeout(timeoutId);
+			this.notifyRateLimit(response.headers);
 
 			if (response.ok) {
 				return await response.text();
@@ -68,6 +98,10 @@ export class HttpClient {
 
 			const errorBody = await response.text().catch(() => "");
 			const requestId = response.headers.get("x-request-id") ?? undefined;
+			if (response.status === 429) {
+				const info = this.readRateLimit(response.headers);
+				throw this.rateLimitError(info, errorBody, response.statusText, requestId);
+			}
 			throw this.mapError(response.status, errorBody, requestId);
 		} catch (err) {
 			clearTimeout(timeoutId);
@@ -89,12 +123,13 @@ export class HttpClient {
 
 		const method = options.method ?? "GET";
 		let lastError: Error | undefined;
+		let nextDelayMs = 0;
 
 		for (let attempt = 0; attempt <= this.retries; attempt++) {
 			if (attempt > 0) {
-				const delay = this.calculateDelay(attempt);
-				await this.sleep(delay);
+				await this.sleep(nextDelayMs);
 			}
+			await this.limiter?.acquire();
 
 			const controller = new AbortController();
 			const timeoutId = setTimeout(() => controller.abort(), this.timeout);
@@ -108,6 +143,7 @@ export class HttpClient {
 				});
 
 				clearTimeout(timeoutId);
+				this.notifyRateLimit(response.headers);
 
 				if (response.ok) {
 					if (response.status === 204) {
@@ -124,19 +160,15 @@ export class HttpClient {
 				}
 
 				if (response.status === 429) {
-					const retryAfter = this.parseRetryAfter(response.headers.get("retry-after"));
-					lastError = new FlowhubRateLimitError(
-						`Rate limited: ${errorBody || response.statusText}`,
-						{ retryAfter, requestId },
-					);
-					if (retryAfter != null && attempt < this.retries) {
-						await this.sleep(retryAfter * 1000);
-					}
+					const info = this.readRateLimit(response.headers);
+					lastError = this.rateLimitError(info, errorBody, response.statusText, requestId);
+					nextDelayMs = this.retryDelayMs(attempt + 1, info.retryAfterMs);
 				} else {
 					lastError = new FlowhubError(
 						`Server error ${response.status}: ${errorBody || response.statusText}`,
 						{ statusCode: response.status, requestId },
 					);
+					nextDelayMs = this.retryDelayMs(attempt + 1, undefined);
 				}
 			} catch (err) {
 				clearTimeout(timeoutId);
@@ -149,19 +181,38 @@ export class HttpClient {
 					throw err;
 				}
 
-				if (err instanceof FlowhubRateLimitError || err instanceof FlowhubError) {
+				if (err instanceof FlowhubRateLimitError) {
 					lastError = err;
-					if (attempt < this.retries) continue;
+					if (attempt < this.retries) {
+						nextDelayMs = this.retryDelayMs(
+							attempt + 1,
+							err.retryAfter != null ? err.retryAfter * 1000 : undefined,
+						);
+						continue;
+					}
+					throw err;
+				}
+
+				if (err instanceof FlowhubError) {
+					lastError = err;
+					if (attempt < this.retries) {
+						nextDelayMs = this.retryDelayMs(attempt + 1, undefined);
+						continue;
+					}
 					throw err;
 				}
 
 				if (err instanceof DOMException && err.name === "AbortError") {
 					lastError = new FlowhubError("Request timed out", { cause: err });
-					if (attempt < this.retries) continue;
+					if (attempt < this.retries) {
+						nextDelayMs = this.retryDelayMs(attempt + 1, undefined);
+						continue;
+					}
 					throw lastError;
 				}
 
 				lastError = new FlowhubError("Network error", { cause: err });
+				nextDelayMs = this.retryDelayMs(attempt + 1, undefined);
 				if (attempt < this.retries) continue;
 			}
 		}
@@ -219,19 +270,104 @@ export class HttpClient {
 		}
 	}
 
-	private parseRetryAfter(header: string | null): number | undefined {
-		if (header == null) return undefined;
-		const seconds = Number(header);
-		if (!Number.isNaN(seconds)) return seconds;
-		const date = Date.parse(header);
-		if (!Number.isNaN(date)) return Math.max(0, Math.ceil((date - Date.now()) / 1000));
+	/**
+	 * Read rate-limit signals from response headers. Handles `Retry-After`
+	 * (delta-seconds or HTTP-date), `Retry-After-Ms`, and the de-facto
+	 * `X-RateLimit-*` / `RateLimit-*` families (`-Limit`, `-Remaining`,
+	 * `-Reset` as epoch-seconds or delta-seconds, `-Reset-After` as delta-seconds).
+	 */
+	private readRateLimit(headers: Headers): RateLimitInfo {
+		const num = (v: string | null): number | undefined => {
+			if (v == null) return undefined;
+			const n = Number(v);
+			return Number.isFinite(n) ? n : undefined;
+		};
+		const limit = num(headers.get("x-ratelimit-limit") ?? headers.get("ratelimit-limit"));
+		const remaining = num(
+			headers.get("x-ratelimit-remaining") ?? headers.get("ratelimit-remaining"),
+		);
+		const retryAfterMs = this.parseRetryAfterMs(headers);
+
+		let resetAt: number | undefined;
+		const resetRaw = headers.get("x-ratelimit-reset") ?? headers.get("ratelimit-reset");
+		if (resetRaw != null) {
+			const n = Number(resetRaw);
+			if (Number.isFinite(n)) {
+				// Heuristic: large values are epoch seconds; small ones are deltas.
+				resetAt = n > 1e7 ? n * 1000 : Date.now() + n * 1000;
+			} else {
+				const d = Date.parse(resetRaw);
+				if (!Number.isNaN(d)) resetAt = d;
+			}
+		}
+		if (resetAt == null && retryAfterMs != null) resetAt = Date.now() + retryAfterMs;
+
+		return { limit, remaining, resetAt, retryAfterMs };
+	}
+
+	private parseRetryAfterMs(headers: Headers): number | undefined {
+		const ms = headers.get("retry-after-ms");
+		if (ms != null) {
+			const n = Number(ms);
+			if (Number.isFinite(n)) return Math.max(0, n);
+		}
+		const retryAfter = headers.get("retry-after");
+		if (retryAfter != null) {
+			const seconds = Number(retryAfter);
+			if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000);
+			const date = Date.parse(retryAfter);
+			if (!Number.isNaN(date)) return Math.max(0, date - Date.now());
+		}
+		const resetAfter =
+			headers.get("x-ratelimit-reset-after") ?? headers.get("ratelimit-reset-after");
+		if (resetAfter != null) {
+			const n = Number(resetAfter);
+			if (Number.isFinite(n)) return Math.max(0, n * 1000);
+		}
 		return undefined;
 	}
 
+	private notifyRateLimit(headers: Headers): void {
+		if (!this.onRateLimit) return;
+		const info = this.readRateLimit(headers);
+		if (
+			info.limit != null ||
+			info.remaining != null ||
+			info.resetAt != null ||
+			info.retryAfterMs != null
+		) {
+			this.onRateLimit(info);
+		}
+	}
+
+	private rateLimitError(
+		info: RateLimitInfo,
+		body: string,
+		statusText: string,
+		requestId: string | undefined,
+	): FlowhubRateLimitError {
+		return new FlowhubRateLimitError(`Rate limited: ${body || statusText}`, {
+			retryAfter: info.retryAfterMs != null ? Math.ceil(info.retryAfterMs / 1000) : undefined,
+			requestId,
+			limit: info.limit,
+			remaining: info.remaining,
+			resetAt: info.resetAt,
+		});
+	}
+
+	/** Delay before the next attempt: honor a server-provided wait, else jittered backoff. */
+	private retryDelayMs(attempt: number, retryAfterMs: number | undefined): number {
+		if (retryAfterMs != null) return Math.min(retryAfterMs, this.maxDelayMs);
+		return this.calculateDelay(attempt);
+	}
+
 	private calculateDelay(attempt: number): number {
-		const exponential = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), MAX_DELAY_MS);
-		const jitter = Math.random() * exponential;
-		return Math.floor(exponential / 2 + jitter);
+		const exponential = Math.min(BASE_DELAY_MS * 2 ** (attempt - 1), this.maxDelayMs);
+		if (this.jitter === "none") return Math.floor(exponential);
+		if (this.jitter === "equal") {
+			return Math.floor(exponential / 2 + Math.random() * (exponential / 2));
+		}
+		return Math.floor(Math.random() * exponential);
 	}
 
 	private sleep(ms: number): Promise<void> {
