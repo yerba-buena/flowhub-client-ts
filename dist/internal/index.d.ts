@@ -378,6 +378,14 @@ interface ReportDownload {
     readonly filename: string;
     readonly contentType: string;
 }
+/** A report downloaded and parsed from CSV into header + row objects. */
+interface ParsedReport {
+    /** Column headers, in file order. */
+    readonly columns: string[];
+    /** One object per data row, keyed by column header (all values raw strings). */
+    readonly rows: Array<Record<string, string>>;
+    readonly filename: string;
+}
 type ReportParams = Record<string, string | number | boolean | undefined>;
 type DateRangeParams = ReportParams & {
     readonly start_date: string;
@@ -675,6 +683,14 @@ declare class ReportsResource {
      * "category-sales", "inventory-snapshot"). Custom report UUIDs work too.
      */
     downloadReport(reportId: string, params?: ReportParams): Promise<ReportDownload>;
+    /**
+     * Download a report and parse its CSV into header + row objects.
+     *
+     * Works for any report ID. Each row is an object keyed by the CSV column
+     * headers, with raw string values (no type coercion). Use this when you want
+     * to consume report data programmatically instead of handling raw bytes.
+     */
+    downloadReportRows(reportId: string, params?: ReportParams): Promise<ParsedReport>;
     /** Convenience: Accounting report (taxes, discounts, refunds, totals). */
     downloadAccounting(params: CommonReportParams): Promise<ReportDownload>;
     /** Convenience: Sales by day by store. */
@@ -919,6 +935,30 @@ declare class FlowhubInternalClient {
 }
 
 /**
+ * Minimal, dependency-free CSV parser for the report download helpers.
+ *
+ * Flowhub's `/analytics/<reportId>` endpoints return CSV (mislabeled as
+ * `text/plain`). This parser is RFC 4180-ish: it handles quoted fields,
+ * embedded commas/newlines, and escaped quotes (`""`), plus both LF and CRLF
+ * line endings. It is intentionally small — we don't pull in a CSV library to
+ * keep the package zero-runtime-dependency.
+ */
+/** Parse CSV text into a header array and rows of raw string cells. */
+declare function parseCsvRaw(text: string): {
+    columns: string[];
+    rows: string[][];
+};
+/**
+ * Parse CSV text into a header array and an array of row objects keyed by
+ * column name. Cells beyond the header length are dropped; missing trailing
+ * cells become empty strings.
+ */
+declare function parseCsv(text: string): {
+    columns: string[];
+    rows: Array<Record<string, string>>;
+};
+
+/**
  * Polls `DrawersResource.list()` on a fixed cadence, diffs each snapshot
  * against the previous one, and yields a stream of typed events as an
  * `AsyncIterable<DrawerEvent>`.
@@ -988,4 +1028,4 @@ declare class DrawerWatcher {
  */
 declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListSalesParams, type ListUsersParams, type OrderDirection, type PurchaseType, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type Sale, type SaleDrawerRef, type SaleItem, type SaleLoyalty, type SaleSeller, type SalesCustomerType, type SalesOrderBy, type SalesReportingStatus, SalesResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListSalesParams, type ListUsersParams, type OrderDirection, type ParsedReport, type PurchaseType, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type Sale, type SaleDrawerRef, type SaleItem, type SaleLoyalty, type SaleSeller, type SalesCustomerType, type SalesOrderBy, type SalesReportingStatus, SalesResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents, parseCsv, parseCsvRaw };

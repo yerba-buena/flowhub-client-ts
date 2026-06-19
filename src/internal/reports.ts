@@ -1,7 +1,14 @@
 import { FlowhubAuthError } from "../errors.js";
+import { parseCsv } from "./csv.js";
 import type { InternalHttp } from "./http.js";
 import type { SessionAuth } from "./session-auth.js";
-import type { CommonReportParams, ReportDownload, ReportMetadata, ReportParams } from "./types.js";
+import type {
+	CommonReportParams,
+	ParsedReport,
+	ReportDownload,
+	ReportMetadata,
+	ReportParams,
+} from "./types.js";
 
 const GET_REPORTS_QUERY = `
 query GetReports {
@@ -138,6 +145,19 @@ export class ReportsResource {
 			filename: result.filename ?? this.fallbackFilename(reportId, merged),
 			contentType: result.contentType,
 		};
+	}
+
+	/**
+	 * Download a report and parse its CSV into header + row objects.
+	 *
+	 * Works for any report ID. Each row is an object keyed by the CSV column
+	 * headers, with raw string values (no type coercion). Use this when you want
+	 * to consume report data programmatically instead of handling raw bytes.
+	 */
+	async downloadReportRows(reportId: string, params: ReportParams = {}): Promise<ParsedReport> {
+		const { data, filename } = await this.downloadReport(reportId, params);
+		const { columns, rows } = parseCsv(data.toString("utf-8"));
+		return { columns, rows, filename };
 	}
 
 	/** Convenience: Accounting report (taxes, discounts, refunds, totals). */

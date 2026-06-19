@@ -851,6 +851,69 @@ var InternalHttp = class {
   }
 };
 
+// src/internal/csv.ts
+function parseCsvRaw(text) {
+  const records = [];
+  let field = "";
+  let record = [];
+  let inQuotes = false;
+  let started = false;
+  const pushField = () => {
+    record.push(field);
+    field = "";
+  };
+  const pushRecord = () => {
+    pushField();
+    records.push(record);
+    record = [];
+    started = false;
+  };
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += c;
+      }
+      continue;
+    }
+    if (c === '"') {
+      inQuotes = true;
+      started = true;
+    } else if (c === ",") {
+      pushField();
+      started = true;
+    } else if (c === "\n") {
+      pushRecord();
+    } else if (c === "\r") {
+      if (text[i + 1] !== "\n") pushRecord();
+    } else {
+      field += c;
+      started = true;
+    }
+  }
+  if (started || field !== "" || record.length > 0) pushRecord();
+  const columns = records.shift() ?? [];
+  return { columns, rows: records };
+}
+function parseCsv(text) {
+  const { columns, rows } = parseCsvRaw(text);
+  const objects = rows.map((cells) => {
+    const obj = {};
+    for (let i = 0; i < columns.length; i++) {
+      obj[columns[i]] = cells[i] ?? "";
+    }
+    return obj;
+  });
+  return { columns, rows: objects };
+}
+
 // src/internal/reports.ts
 var GET_REPORTS_QUERY = `
 query GetReports {
@@ -955,6 +1018,18 @@ var ReportsResource = class {
       filename: result.filename ?? this.fallbackFilename(reportId, merged),
       contentType: result.contentType
     };
+  }
+  /**
+   * Download a report and parse its CSV into header + row objects.
+   *
+   * Works for any report ID. Each row is an object keyed by the CSV column
+   * headers, with raw string values (no type coercion). Use this when you want
+   * to consume report data programmatically instead of handling raw bytes.
+   */
+  async downloadReportRows(reportId, params = {}) {
+    const { data, filename } = await this.downloadReport(reportId, params);
+    const { columns, rows } = parseCsv(data.toString("utf-8"));
+    return { columns, rows, filename };
   }
   /** Convenience: Accounting report (taxes, discounts, refunds, totals). */
   async downloadAccounting(params) {
@@ -1630,6 +1705,8 @@ export {
   RoomsResource,
   SalesResource,
   UsersResource,
-  computeEvents
+  computeEvents,
+  parseCsv,
+  parseCsvRaw
 };
 //# sourceMappingURL=index.js.map

@@ -15,6 +15,15 @@ export interface ReportDownload {
 	readonly contentType: string;
 }
 
+/** A report downloaded and parsed from CSV into header + row objects. */
+export interface ParsedReport {
+	/** Column headers, in file order. */
+	readonly columns: string[];
+	/** One object per data row, keyed by column header (all values raw strings). */
+	readonly rows: Array<Record<string, string>>;
+	readonly filename: string;
+}
+
 export type ReportParams = Record<string, string | number | boolean | undefined>;
 
 export type DateRangeParams = ReportParams & {
