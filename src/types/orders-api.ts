@@ -95,7 +95,9 @@ export interface CustomersListParams extends PaginationParams {
 // ── Sale / Order (response model: order-model) ─────────────────────
 
 export interface SaleTotals {
+	/** Grand total charged (post-tax, post-fees). Integer cents. Use for **post-tax AOV**. */
 	readonly FinalTotal: number;
+	/** Pre-tax item subtotal. Integer cents. Use for **pre-tax AOV**. */
 	readonly SubTotal: number;
 	readonly TotalDiscounts: number;
 	readonly TotalFees: number;
@@ -167,10 +169,30 @@ export interface SalePayment {
 
 export interface Sale {
 	readonly id: string;
-	readonly budtender: string;
-	readonly budtenderId: string;
+	/**
+	 * Display name of the selling budtender. **Optional** — the public API marks
+	 * this not-required and it has been observed absent on live orders.
+	 */
+	readonly budtender?: string | undefined;
+	/**
+	 * ID of the selling budtender on the **public** order. **Optional / not
+	 * guaranteed present** (the API marks it not-required; observed absent in
+	 * production).
+	 *
+	 * ⚠️ **Cross-client join key — read this before joining on it.** Do *not*
+	 * assume `budtenderId` equals the internal `Employee.id`. That equality is
+	 * verified only for the **internal** `sales` resource (`soldBy.id ==
+	 * employees.id`). The public `budtenderId` is unconfirmed, may be a
+	 * different id namespace, and is sometimes empty — joining seller metrics on
+	 * it has produced all-zero results with no error. For per-seller metrics,
+	 * prefer the internal `sales` resource and join on `soldBy.id`. See
+	 * `docs/METRICS.md` and issues #19 / #18.
+	 */
+	readonly budtenderId?: string | undefined;
 	readonly clientId: string;
+	/** ISO 8601. When the order was created. `created_after`/`created_before` filter on this (store-local date). */
 	readonly createdAt: string;
+	/** ISO 8601. When the order was completed/sold — use this for "sales in period", not `createdAt`. */
 	readonly completedOn: string;
 	readonly currentPoints: number;
 	readonly customerId: string;
@@ -183,13 +205,27 @@ export interface Sale {
 	readonly locationId: string;
 	readonly name: string;
 	readonly orderId: string;
-	readonly orderStatus: "Pending" | "Cancelled" | "Sold";
+	/**
+	 * Order status. ⚠️ **Live data returns lowercase** (e.g. `"sold"`), while
+	 * Flowhub's docs example shows TitleCase (`"Sold"`). The API types it only as
+	 * `string`, so this union is permissive — **compare case-insensitively**
+	 * (e.g. `status.toLowerCase() === "sold"`).
+	 */
+	readonly orderStatus:
+		| "sold"
+		| "pending"
+		| "cancelled"
+		| "Sold"
+		| "Pending"
+		| "Cancelled"
+		| (string & {});
 	readonly orderType: string;
 	readonly originalSaleId: string;
 	readonly payments: readonly SalePayment[];
 	readonly sentToFulfillmentBy: string;
 	readonly sentToFulfillmentById: string;
 	readonly totals: SaleTotals;
+	/** When `true`, the sale was voided — exclude from revenue/AOV/UPT metrics. */
 	readonly voided: boolean;
 }
 
