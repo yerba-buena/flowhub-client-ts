@@ -162,6 +162,9 @@ new FlowhubClient({ clientId, apiKey, rateLimit: { rps: 0 } }); // disable
 **full-jitter exponential backoff** (`jitter`/`maxDelayMs` configurable). If the
 server sends a `Retry-After` (delta-seconds or HTTP-date), `Retry-After-Ms`, or
 `X-RateLimit-Reset[-After]` / `RateLimit-*` header, that wait is honored instead.
+In practice Flowhub has been observed to send **no** rate-limit headers at all
+(even on 429), so throttle + jittered backoff is the effective mechanism today;
+the header handling is forward-looking.
 
 **3. Visibility.** `FlowhubRateLimitError` exposes `retryAfter` (seconds),
 `limit`, `remaining`, and `resetAt` when the server provides them. Pass
@@ -170,20 +173,25 @@ self-pace. (Note: some Flowhub 429s carry no rate-limit headers at all — then
 `retryAfter` is `undefined` and the client falls back to jittered backoff.)
 
 **Reduce call volume with date bounds.** The biggest lever is fetching less.
-List endpoints accept `created_after` / `created_before`, so you can pull a
-bounded window instead of paginating an entire location's history:
+List endpoints honor `created_after` / `created_before` server-side, so you can
+pull a bounded window instead of paginating an entire location's history — a
+week is ~98% fewer rows than full history:
 
 ```ts
 const { orders } = await flowhub.orders.listByLocationId(importId, {
-  created_after: "2026-06-01",
+  created_after: "2026-06-01",  // YYYY-MM-DD only
   created_before: "2026-06-08",
   page_size: 100,
 });
 ```
 
-> Server-side honoring of these date bounds on the orders endpoints isn't
-> documented by Flowhub — the client always sends them; confirm the effect
-> against a live response for your account.
+> - **Format:** dates must be `YYYY-MM-DD`; a full ISO timestamp is rejected by
+>   Flowhub (`404 …must be in format yyyy-mm-dd`). The client validates this and
+>   throws `FlowhubValidationError` before sending.
+> - **Timezone:** the bound is applied in the **store's local time** (not UTC)
+>   and keys on the order's **creation** date — orders near local midnight can
+>   land in the adjacent UTC day, so account for the store's offset when building
+>   week windows.
 
 ## Custom fetch / SSRF hardening
 

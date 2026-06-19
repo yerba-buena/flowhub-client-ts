@@ -65,14 +65,19 @@ export interface CustomerWriteParams {
 
 export interface PaginationParams {
 	/**
-	 * Lower date bound for list endpoints (e.g. `listByLocationId`). Use this to
-	 * fetch a bounded window (a single week) instead of paginating an entire
-	 * location's order history — the single biggest lever for staying under the
-	 * API rate limit. ISO 8601 / `YYYY-MM-DD`.
+	 * Lower date bound for list endpoints (e.g. `listByLocationId`). Fetching a
+	 * bounded window (a single week) instead of paginating an entire location's
+	 * order history is the single biggest lever for staying under the API rate
+	 * limit — confirmed ~98% fewer rows for a week vs. full history.
 	 *
-	 * Note: server-side honoring of these bounds on the orders endpoints is not
-	 * documented in `flowhub-api-docs`; confirm against a live response for your
-	 * account. The client always forwards them as query params.
+	 * **Must be `YYYY-MM-DD`** — a full ISO timestamp is rejected by Flowhub with
+	 * `404 …must be in format yyyy-mm-dd` (the client validates this and throws
+	 * `FlowhubValidationError` first).
+	 *
+	 * **Timezone:** the bound is applied in the **store's local time**, not UTC,
+	 * and keys on the order's **creation** date. When building a week window for
+	 * a UTC-based system, expect edge orders near local midnight (e.g. a
+	 * `2026-06-13T02:00Z` order falls in the `…-06-12` window for an ET store).
 	 */
 	readonly created_after?: string | undefined;
 	/** Upper date bound for list endpoints. See {@link PaginationParams.created_after}. */

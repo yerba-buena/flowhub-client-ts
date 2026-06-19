@@ -1,3 +1,4 @@
+import { FlowhubValidationError } from "../errors.js";
 import type { HttpClient } from "../http.js";
 import type {
 	Customer,
@@ -9,8 +10,26 @@ import type {
 
 type QueryRecord = Record<string, string | number | boolean | undefined>;
 
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Flowhub's list endpoints accept date bounds only as `YYYY-MM-DD`; a full ISO
+ * timestamp is rejected with `404 …must be in format yyyy-mm-dd`. Validate
+ * client-side so callers get a clear error instead of a confusing 404.
+ */
+function assertDateOnly(name: string, value: string | undefined): void {
+	if (value !== undefined && !DATE_ONLY.test(value)) {
+		throw new FlowhubValidationError(
+			`${name} must be a YYYY-MM-DD date (Flowhub rejects full timestamps); received "${value}"`,
+			{ errors: [`${name}: expected YYYY-MM-DD`] },
+		);
+	}
+}
+
 function paginationQuery(params?: PaginationParams): QueryRecord {
 	if (!params) return {};
+	assertDateOnly("created_after", params.created_after);
+	assertDateOnly("created_before", params.created_before);
 	return {
 		created_after: params.created_after,
 		created_before: params.created_before,
@@ -33,6 +52,8 @@ export class OrdersResource {
 	 * return type once validated against a live response.
 	 */
 	async getCustomers(params?: CustomersListParams): Promise<Customer> {
+		assertDateOnly("updated_after", params?.updated_after);
+		assertDateOnly("updated_before", params?.updated_before);
 		return this.http.request<Customer>({
 			path: "/v1/customers/",
 			query: {
