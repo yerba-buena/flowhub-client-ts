@@ -2,7 +2,7 @@ import { http, HttpResponse, type JsonBodyType } from "msw";
 import { setupServer } from "msw/node";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { FlowhubClient } from "../../src/client.js";
-import { FlowhubAuthError } from "../../src/errors.js";
+import { FlowhubAuthError, FlowhubValidationError } from "../../src/errors.js";
 import { CUSTOMER_FIXTURE, ORDERS_LIST_RESPONSE } from "../fixtures/orders.fixtures.js";
 
 const BASE_URL = "https://api.test.flowhub.co";
@@ -284,6 +284,20 @@ describe("OrdersResource — Sales", () => {
 			expect(url).toContain("page=3");
 			expect(url).toContain("page_size=100");
 			expect(url).toContain("order_by=desc");
+		});
+
+		it("rejects a full ISO timestamp before sending (clear error, not a 404)", async () => {
+			const reqs = capture("get", "/v1/orders/findByLocationId/:importId", ORDERS_LIST_RESPONSE);
+			const client = createClient();
+
+			await expect(
+				client.orders.listByLocationId("loc-001", { created_after: "2026-04-01T00:00:00Z" }),
+			).rejects.toThrow(FlowhubValidationError);
+			await expect(
+				client.orders.listByLocationId("loc-001", { created_before: "2026/04/01" }),
+			).rejects.toThrow(/YYYY-MM-DD/);
+
+			expect(reqs).toHaveLength(0); // never hit the network
 		});
 	});
 });

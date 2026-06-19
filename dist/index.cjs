@@ -591,8 +591,19 @@ var OrderAheadResource = class {
 };
 
 // src/resources/orders.ts
+var DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+function assertDateOnly(name, value) {
+  if (value !== void 0 && !DATE_ONLY.test(value)) {
+    throw new FlowhubValidationError(
+      `${name} must be a YYYY-MM-DD date (Flowhub rejects full timestamps); received "${value}"`,
+      { errors: [`${name}: expected YYYY-MM-DD`] }
+    );
+  }
+}
 function paginationQuery(params) {
   if (!params) return {};
+  assertDateOnly("created_after", params.created_after);
+  assertDateOnly("created_before", params.created_before);
   return {
     created_after: params.created_after,
     created_before: params.created_before,
@@ -615,6 +626,8 @@ var OrdersResource = class {
    * return type once validated against a live response.
    */
   async getCustomers(params) {
+    assertDateOnly("updated_after", params?.updated_after);
+    assertDateOnly("updated_before", params?.updated_before);
     return this.http.request({
       path: "/v1/customers/",
       query: {
