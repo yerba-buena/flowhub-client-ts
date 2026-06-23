@@ -13,6 +13,8 @@ Last updated: 2026-06-23.
   in `captures/` (git-ignored). Helper: `scripts/extract-graphql-from-har.mjs`.
 - Public-API facts are checked against the `yerba-buena/flowhub-api-docs` mirror
   (via GitHub code search).
+- **On closing/resolving an issue that changes the API, add an entry to the
+  README `## API changelog`** (newest first, with the issue/PR link).
 
 ## Shipped to `main`
 - #3 `fetchFn` SSRF hook · #10 `employees` roster · #12 `sales` (+ verified

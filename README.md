@@ -297,6 +297,24 @@ const client = new FlowhubInternalClient({ email, password });
 
 Resources (`reports`, `drawers`, `users`, `rooms`), all types, the `DrawerWatcher`, error classes, and runtime behavior are **unchanged** — only the names and import path moved.
 
+## API changelog
+
+API-surface changes (public + `/internal`), newest first. Bug-fix detail and
+release notes live in [CHANGELOG.md](./CHANGELOG.md); this is the quick reference
+for what changed in the **API you call**. Entries link the issue/PR.
+
+### Unreleased
+
+- **`internal.users` — `UserRole.permissions` is now `UserPermission[]`** (objects `{ id, name, action, target }`), not `string[]`; added `UserRole.isHourly?` and exported the new `UserPermission` type. Also fixes `users.list()`, which previously always 422'd against the live schema (so `User.role` + permissions are now readable). ([#23](https://github.com/yerba-buena/flowhub-client-ts/issues/23))
+- **`internal.drawers` — `GetDrawers` query corrected** so `drawers.list()` and `DrawerWatcher` work against the live schema. No type/signature change. ([#23](https://github.com/yerba-buena/flowhub-client-ts/issues/23))
+- **public `Sale` — `budtender` / `budtenderId` are now `string | undefined`** (were required); `orderStatus` widened to a permissive union including the lowercase values the API actually returns (`"sold"`, …). Prefer the internal `sales` resource's `soldBy.id` for the seller join — see [docs/METRICS.md](./docs/METRICS.md). ([#19](https://github.com/yerba-buena/flowhub-client-ts/issues/19))
+- **`orders` — `created_after` / `created_before` are validated as `YYYY-MM-DD`** and throw `FlowhubValidationError` on a full ISO timestamp (the API otherwise 404s). ([#15](https://github.com/yerba-buena/flowhub-client-ts/issues/15))
+- **Rate limiting — new `FlowhubClient` options `rateLimit`, `maxDelayMs`, `jitter`, `onRateLimit`.** A client-side throttle is **on by default** (~45 req/s; `{ rps: 0 }` disables). `FlowhubRateLimitError` gained `limit` / `remaining` / `resetAt`. New exports: `RateLimitOptions`, `RateLimitInfo`, `JitterMode`. ([#15](https://github.com/yerba-buena/flowhub-client-ts/issues/15))
+- **`internal.reports` — new `downloadReportRows(reportId, params)`** returning parsed `{ columns, rows }`; exported `parseCsv` / `parseCsvRaw` and the `ParsedReport` type; added `downloadInventoryActivity` / `downloadProductActivity` / `downloadDealsUsage` / `downloadDealsFullDetails`. ([#13](https://github.com/yerba-buena/flowhub-client-ts/issues/13))
+- **New `internal.sales` resource** — `list` / `listAll` / `get` over completed sales (`soldBy.id` == `employees.id`, `employeeIds` filter). ([#12](https://github.com/yerba-buena/flowhub-client-ts/issues/12))
+- **New `internal.employees` resource** — `list` / `listAll` / `get` for the staff roster (`email → id`). ([#10](https://github.com/yerba-buena/flowhub-client-ts/issues/10))
+- **`FlowhubClient` / `FlowhubInternalClient` — new `fetchFn` option** for SSRF-safe egress / custom transport. ([#3](https://github.com/yerba-buena/flowhub-client-ts/issues/3))
+
 ## License
 
 [MIT](./LICENSE)
