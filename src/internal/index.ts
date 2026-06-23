@@ -33,6 +33,7 @@ export type {
 	Room,
 	UpdateDrawerInput,
 	User,
+	UserPermission,
 	UserRole,
 	UserStore,
 } from "./cash-management-types.js";

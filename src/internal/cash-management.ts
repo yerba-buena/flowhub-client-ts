@@ -27,14 +27,14 @@ fragment DrawerFields on Drawer {
   dropTriggerBalance
   needsDrop
   rooms { id name }
-  users { id email meta { firstName lastName } }
+  users { id email meta }
   counts {
     id
     drawerId
     openedAt
-    openedByUser { id email meta { firstName lastName } }
+    openedByUser { id email meta }
     ClosedAt
-    closedByUser { id email meta { firstName lastName } }
+    closedByUser { id email meta }
     openingCashBalance
     cashBalance
     closingCashBalance
@@ -63,10 +63,10 @@ fragment DrawerFields on Drawer {
     debitTipRevenue
     closingDebitBalance
     closingRevenue
-    payins  { id total reason timestamp user_id balance_before balance_after }
-    payouts { id total reason timestamp user_id balance_before balance_after }
-    drops   { id total reason timestamp user_id balance_before balance_after }
-    pops    { id total reason timestamp user_id balance_before balance_after }
+    payins
+    payouts
+    drops
+    pops
     totalPaidIn
     totalPaidOut
     totalDropped
@@ -77,7 +77,7 @@ fragment DrawerFields on Drawer {
 
 const GET_DRAWERS_QUERY = `
 ${DRAWER_FIELDS}
-query GetDrawers($id: String, $hidden: Boolean, $orderBy: String, $orderDirection: String) {
+query GetDrawers($id: ID, $hidden: Boolean, $orderBy: DrawersOrderBy, $orderDirection: OrderDirection) {
   drawers(id: $id, hidden: $hidden, orderBy: $orderBy, orderDirection: $orderDirection) {
     ...DrawerFields
   }
@@ -98,7 +98,7 @@ query GetDrawerActivities($id: String!, $startDate: String!, $endDate: String!) 
       type        { to from }
       dropTriggerBalance { to from }
       rooms       { to { id name } from { id name } }
-      users       { to { id email meta { firstName lastName } } from { id email meta { firstName lastName } } }
+      users       { to { id email meta } from { id email meta } }
     }
   }
 }

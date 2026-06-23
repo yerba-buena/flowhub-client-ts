@@ -43,10 +43,24 @@ export interface DrawerUser {
 	readonly meta: DrawerUserMeta;
 }
 
+/** A single permission grant on a role (`action` + `target`, e.g. `drawer` / `open`). */
+export interface UserPermission {
+	readonly id?: string | undefined;
+	readonly name?: string | undefined;
+	readonly action: string;
+	readonly target: string;
+}
+
 export interface UserRole {
 	readonly id: string;
 	readonly name: string;
-	readonly permissions: ReadonlyArray<string>;
+	readonly isHourly?: boolean | undefined;
+	/**
+	 * Permission grants for this role. Each is an object (`{ action, target }`),
+	 * **not** a string — selecting `permissions` without subfields 422s against
+	 * Flowhub's schema.
+	 */
+	readonly permissions: ReadonlyArray<UserPermission>;
 }
 
 export interface UserStore {
