@@ -58,19 +58,32 @@ const SAMPLE_USER = {
 	meta: { firstName: "Alex", lastName: "Cashier" },
 	phoneNumber: "+15555555555",
 	stores: [{ id: "store-1", name: "Main Street" }],
-	role: { id: "role-1", name: "Manager", permissions: ["drawer.open", "drawer.close"] },
+	role: {
+		id: "role-1",
+		name: "Manager",
+		isHourly: false,
+		permissions: [
+			{ id: "p1", name: "Open drawer", action: "open", target: "drawer" },
+			{ id: "p2", name: "Close drawer", action: "close", target: "drawer" },
+		],
+	},
 };
 
 describe("UsersResource.list", () => {
 	it("queries GetUsers with the supplied variables and returns users", async () => {
 		let capturedVars: Record<string, unknown> | undefined;
+		let capturedQuery: string | undefined;
 		server.use(
-			gqlRouter({
-				Login: () => makeLoginPayload(),
-				GetUsers: ({ variables }) => {
-					capturedVars = variables;
-					return { data: { users: [SAMPLE_USER] } };
-				},
+			http.post(`${BASE_URL}/graph/query`, async ({ request }) => {
+				const body = (await request.json()) as {
+					operationName: string;
+					variables: Record<string, unknown>;
+					query: string;
+				};
+				if (body.operationName === "Login") return HttpResponse.json(makeLoginPayload());
+				capturedVars = body.variables;
+				capturedQuery = body.query;
+				return HttpResponse.json({ data: { users: [SAMPLE_USER] } });
 			}),
 		);
 
@@ -78,12 +91,22 @@ describe("UsersResource.list", () => {
 		const users = await client.users.list({ storeUsers: true, storeId: "store-1" });
 
 		expect(capturedVars).toEqual({ storeUsers: true, storeId: "store-1" });
+		// Regression guard for #23: must target filteredUsers with correct shapes.
+		expect(capturedQuery).toContain("filteredUsers(");
+		expect(capturedQuery).toContain("$storeId: ID");
+		expect(capturedQuery).toContain("$orderBy: UsersOrderBy");
+		expect(capturedQuery).toContain("permissions { id name action target }");
+		expect(capturedQuery).not.toContain("meta { firstName");
 		expect(users).toHaveLength(1);
 		expect(users[0]).toMatchObject({
 			id: "user-1",
 			email: "alex@example.com",
 			role: { name: "Manager" },
 		});
+		expect(users[0]?.role?.permissions).toEqual([
+			{ id: "p1", name: "Open drawer", action: "open", target: "drawer" },
+			{ id: "p2", name: "Close drawer", action: "close", target: "drawer" },
+		]);
 	});
 
 	it("omits unset variables", async () => {

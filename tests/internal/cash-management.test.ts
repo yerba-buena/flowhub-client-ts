@@ -158,6 +158,31 @@ describe("DrawersResource.list", () => {
 		expect(drawers[0]).toMatchObject({ id: "drawer-uuid-1", name: "Test Drawer", type: "REC" });
 	});
 
+	it("sends a schema-valid GetDrawers query (regression for the #23-class drift)", async () => {
+		let q = "";
+		server.use(
+			http.post(`${BASE_URL}/graph/query`, async ({ request }) => {
+				const body = (await request.json()) as { operationName: string; query: string };
+				if (body.operationName === "Login") return HttpResponse.json(makeLoginPayload());
+				q = body.query;
+				return HttpResponse.json({ data: { drawers: [] } });
+			}),
+		);
+
+		await makeClient().drawers.list();
+
+		// Correct variable types (were String / String / String).
+		expect(q).toContain("$id: ID");
+		expect(q).toContain("$orderBy: DrawersOrderBy");
+		expect(q).toContain("$orderDirection: OrderDirection");
+		// `meta` is a scalar — must not be sub-selected anywhere.
+		expect(q).not.toContain("meta { firstName");
+		// Cash-event arrays are scalars — must be selected bare, not with subfields.
+		expect(q).not.toContain("payins  {");
+		expect(q).not.toContain("payins {");
+		expect(q).toMatch(/\n\s*payins\s*\n/);
+	});
+
 	it("passes no variables when called with no params", async () => {
 		let capturedVars: Record<string, unknown> | undefined;
 		server.use(

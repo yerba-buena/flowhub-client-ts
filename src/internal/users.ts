@@ -6,26 +6,28 @@ import type { SessionAuth } from "./session-auth.js";
 const GET_USERS_QUERY = `
 query GetUsers(
   $storeUsers: Boolean
-  $storeId: String
-  $storeIds: [String!]
-  $status: String
-  $orderBy: String
+  $storeId: ID
+  $status: UserStatus
+  $orderBy: UsersOrderBy
+  $storeIds: [ID]
   $isInternal: Boolean
 ) {
-  users(
-    storeUsers: $storeUsers
-    storeId: $storeId
-    storeIds: $storeIds
-    status: $status
-    orderBy: $orderBy
-    isInternal: $isInternal
+  users: filteredUsers(
+    usersParams: {
+      onSameStoreAsRequester: $storeUsers
+      storeId: $storeId
+      status: $status
+      orderBy: $orderBy
+      storeIds: $storeIds
+      isInternal: $isInternal
+    }
   ) {
     id
     email
-    meta { firstName lastName }
+    meta
     phoneNumber
     stores { id name }
-    role { id name permissions }
+    role { id name isHourly permissions { id name action target } }
   }
 }
 `;

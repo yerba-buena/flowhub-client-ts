@@ -39,10 +39,23 @@ interface DrawerUser {
     readonly email: string;
     readonly meta: DrawerUserMeta;
 }
+/** A single permission grant on a role (`action` + `target`, e.g. `drawer` / `open`). */
+interface UserPermission {
+    readonly id?: string | undefined;
+    readonly name?: string | undefined;
+    readonly action: string;
+    readonly target: string;
+}
 interface UserRole {
     readonly id: string;
     readonly name: string;
-    readonly permissions: ReadonlyArray<string>;
+    readonly isHourly?: boolean | undefined;
+    /**
+     * Permission grants for this role. Each is an object (`{ action, target }`),
+     * **not** a string — selecting `permissions` without subfields 422s against
+     * Flowhub's schema.
+     */
+    readonly permissions: ReadonlyArray<UserPermission>;
 }
 interface UserStore {
     readonly id: string;
@@ -1028,4 +1041,4 @@ declare class DrawerWatcher {
  */
 declare function computeEvents(prev: Map<string, Drawer>, nextList: Drawer[]): DrawerEvent[];
 
-export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListSalesParams, type ListUsersParams, type OrderDirection, type ParsedReport, type PurchaseType, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type Sale, type SaleDrawerRef, type SaleItem, type SaleLoyalty, type SaleSeller, type SalesCustomerType, type SalesOrderBy, type SalesReportingStatus, SalesResource, type UpdateDrawerInput, type User, type UserRole, type UserStore, UsersResource, computeEvents, parseCsv, parseCsvRaw };
+export { type CashEvent, type CashEventParams, type CommonReportParams, type CountRecord, type CreateDrawerInput, DEFAULT_INTERNAL_BASE_URL, type DateRangeParams, type Denominations, type Drawer, type DrawerActivity, type DrawerActivityAction, type DrawerActivityChanges, type DrawerActivityUsersChange, type DrawerCounts, type DrawerEvent, type DrawerRoom, type DrawerSource, type DrawerTip, type DrawerType, type DrawerUser, type DrawerUserMeta, DrawerWatcher, type DrawerWatcherOptions, DrawersResource, type Employee, type EmployeeOrderBy, type EmployeeRole, type EmployeeStatus, type EmployeeStore, EmployeesResource, FlowhubInternalClient, type FlowhubInternalClientConfig, type ListActivityParams, type ListDrawersParams, type ListEmployeesParams, type ListSalesParams, type ListUsersParams, type OrderDirection, type ParsedReport, type PurchaseType, type ReceiptDownload, type ReceiptKind, type ReceiptOptions, type ReportDownload, type ReportMetadata, type ReportParameterMetadata, type ReportParameterOption, type ReportParams, type Room, RoomsResource, type Sale, type SaleDrawerRef, type SaleItem, type SaleLoyalty, type SaleSeller, type SalesCustomerType, type SalesOrderBy, type SalesReportingStatus, SalesResource, type UpdateDrawerInput, type User, type UserPermission, type UserRole, type UserStore, UsersResource, computeEvents, parseCsv, parseCsvRaw };
